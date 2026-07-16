@@ -7,8 +7,8 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
-import net.neoforged.neoforge.network.ClientPacketDistributor;
 import powerful.powers.network.UseAbilityPacket;
 import powerful.powers.powers;
 import org.lwjgl.glfw.GLFW;
@@ -16,9 +16,7 @@ import org.lwjgl.glfw.GLFW;
 /**
  * NeoForge 21.11:
  *   - KeyMapping constructor: (String, IKeyConflictContext, InputConstants.Key, KeyMapping.Category)
- *     Last arg is KeyMapping.Category record — use KeyMapping.Category.GAMEPLAY static constant.
- *   - Serverbound packets: ClientPacketDistributor.sendToServer(payload)
- *     PacketDistributor.sendToServer() does not exist; serverbound uses ClientPacketDistributor.
+ *   - Serverbound packets: net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer()
  */
 @EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT)
 public class AbilityKeybind {
