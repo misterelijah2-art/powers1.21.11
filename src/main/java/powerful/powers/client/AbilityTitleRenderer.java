@@ -7,27 +7,33 @@ import powerful.powers.ability.AbilityType;
 
 /**
  * Renders the dramatic ability reveal animation.
- * Uses GuiGraphics directly — no PoseStack needed for text in MC 1.21.11.
  *
  * Phases (ticks):
  *   0-40   : "A power awakens..." fades in
  *   40-80  : hold
  *   80-100 : fade out
  *   100-140: blank pause
- *   140-220: ability name scales in (large -> normal)
+ *   140-220: ability name scales in
  *   220-280: hold
  *   280-340: fade out
+ *
+ * At tick 340 (end) the HUD is unlocked client-side via ClientAbilityData.setHudUnlocked(true).
+ * The server independently unlocks after 340 ticks via hudUnlockTimers.
  */
 public class AbilityTitleRenderer {
 
     private static AbilityType pendingAbility = null;
     private static int timer = -1;
     private static final int TOTAL_DURATION = 340;
+    /** Tick at which the HUD becomes visible — matches end of reveal. */
+    private static final int HUD_UNLOCK_TICK = 340;
 
     public static void triggerReveal(String abilityName) {
         try {
             pendingAbility = AbilityType.valueOf(abilityName);
             timer = 0;
+            // Lock HUD immediately when a new reveal starts
+            ClientAbilityData.setHudUnlocked(false);
         } catch (IllegalArgumentException e) {
             pendingAbility = null;
             timer = -1;
@@ -35,8 +41,14 @@ public class AbilityTitleRenderer {
     }
 
     public static void tick() {
-        if (timer >= 0) timer++;
-        if (timer > TOTAL_DURATION) { timer = -1; pendingAbility = null; }
+        if (timer < 0) return;
+        timer++;
+        // Unlock HUD exactly when the animation ends
+        if (timer >= HUD_UNLOCK_TICK) {
+            ClientAbilityData.setHudUnlocked(true);
+            timer = -1;
+            pendingAbility = null;
+        }
     }
 
     public static boolean isActive() { return timer >= 0 && pendingAbility != null; }
@@ -89,18 +101,16 @@ public class AbilityTitleRenderer {
             String name = pendingAbility.getDisplayName();
             int textW = font.width(name);
 
-            // GuiGraphics.pose() returns Matrix3x2fStack in 1.21.11 — use drawString with manual scaling via pose
             gfx.pose().pushMatrix();
             gfx.pose().translate(sw / 2f, sh / 2f);
             gfx.pose().scale(scale, scale);
             gfx.drawString(font, name, -textW / 2, -font.lineHeight / 2, color, true);
             gfx.pose().popMatrix();
 
-            // Sub-label
             if (progress > 80f) {
                 int subA = (int)(Math.min(1f, (progress - 80f) / 40f) * alpha * 200f);
                 int subColor = (subA << 24) | 0xAAAAAA;
-                String sub = "Press [R] to activate";
+                String sub = "Hold [R] to charge, release to activate";
                 gfx.drawString(font, sub, (sw - font.width(sub)) / 2, sh / 2 + 24, subColor, false);
             }
         }

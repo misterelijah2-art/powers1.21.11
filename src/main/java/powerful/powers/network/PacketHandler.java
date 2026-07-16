@@ -8,11 +8,6 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import powerful.powers.ability.AbilityLogicHandler;
 import powerful.powers.client.ClientPacketHandlers;
 
-/**
- * Registers all packets via the PayloadRegistrar passed from powers.java.
- * NeoForge 21.11: registrar uses .playToClient() / .playToServer() directly.
- * No DirectionalPayloadHandler - handlers are plain IPayloadContext lambdas.
- */
 public class PacketHandler {
 
     public static void register(PayloadRegistrar reg) {
@@ -38,9 +33,24 @@ public class PacketHandler {
                 UseAbilityPacket.TYPE,
                 UseAbilityPacket.STREAM_CODEC,
                 (pkt, ctx) -> ctx.enqueueWork(() -> {
-                    if (ctx.player() instanceof ServerPlayer sp) {
+                    if (ctx.player() instanceof ServerPlayer sp)
                         AbilityLogicHandler.activateAbility(sp);
-                    }
+                }));
+
+        reg.playToServer(
+                ChargeStartPacket.TYPE,
+                ChargeStartPacket.STREAM_CODEC,
+                (pkt, ctx) -> ctx.enqueueWork(() -> {
+                    if (ctx.player() instanceof ServerPlayer sp)
+                        AbilityLogicHandler.beginCharge(sp);
+                }));
+
+        reg.playToServer(
+                ChargeReleasePacket.TYPE,
+                ChargeReleasePacket.STREAM_CODEC,
+                (pkt, ctx) -> ctx.enqueueWork(() -> {
+                    if (ctx.player() instanceof ServerPlayer sp)
+                        AbilityLogicHandler.releaseCharge(sp);
                 }));
     }
 

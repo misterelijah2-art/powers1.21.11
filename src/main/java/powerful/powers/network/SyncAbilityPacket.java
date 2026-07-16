@@ -10,11 +10,16 @@ import powerful.powers.client.ClientAbilityData;
 import powerful.powers.powers;
 
 /**
- * Server -> Client: sync ability + cooldown for HUD.
- * MC 1.21.11: ResourceLocation was renamed to Identifier.
+ * Server -> Client: sync ability + cooldown + charge + hudUnlocked for HUD.
  */
-public record SyncAbilityPacket(String abilityName, int cooldownRemaining, int cooldownMax)
-        implements CustomPacketPayload {
+public record SyncAbilityPacket(
+        String abilityName,
+        int cooldownRemaining,
+        int cooldownMax,
+        boolean isCharging,
+        int chargeTicks,
+        boolean hudUnlocked
+) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<SyncAbilityPacket> TYPE =
             new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(powers.MODID, "sync_ability"));
@@ -24,6 +29,9 @@ public record SyncAbilityPacket(String abilityName, int cooldownRemaining, int c
                 ByteBufCodecs.STRING_UTF8, SyncAbilityPacket::abilityName,
                 ByteBufCodecs.INT,         SyncAbilityPacket::cooldownRemaining,
                 ByteBufCodecs.INT,         SyncAbilityPacket::cooldownMax,
+                ByteBufCodecs.BOOL,        SyncAbilityPacket::isCharging,
+                ByteBufCodecs.INT,         SyncAbilityPacket::chargeTicks,
+                ByteBufCodecs.BOOL,        SyncAbilityPacket::hudUnlocked,
                 SyncAbilityPacket::new
             );
 

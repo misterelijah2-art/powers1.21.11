@@ -32,13 +32,21 @@ import java.util.*;
 @EventBusSubscriber(modid = powers.MODID)
 public class AbilityLogicHandler {
 
-    private static final Map<UUID, Integer>      joinTimers     = new HashMap<>();
-    private static final Set<UUID>               assigned       = new HashSet<>();
-    private static final Map<UUID, Set<UUID>>    deathMarked    = new HashMap<>();
-    private static final Map<UUID, Integer>      magmaCageTicks = new HashMap<>();
-    private static final Map<UUID, Integer>      riftDetonation = new HashMap<>();
-    private static final Map<UUID, List<UUID>>   riftTargets    = new HashMap<>();
+    private static final Map<UUID, Integer>     joinTimers      = new HashMap<>();
+    private static final Set<UUID>              assigned        = new HashSet<>();
+    private static final Map<UUID, Set<UUID>>   deathMarked     = new HashMap<>();
+    private static final Map<UUID, Integer>     magmaCageTicks  = new HashMap<>();
+    private static final Map<UUID, Integer>     riftDetonation  = new HashMap<>();
+    private static final Map<UUID, List<UUID>>  riftTargets     = new HashMap<>();
+    private static final Map<UUID, Integer>     hudUnlockTimers = new HashMap<>();
     private static final int ASSIGN_DELAY_TICKS = 200;
+
+    // Particle colours per ability (ARGB packed)
+    private static final int COLOR_NULL_RIFT     = (0xFF << 24) | 0x6600CC;
+    private static final int COLOR_MAGMA_CAGE    = (0xFF << 24) | 0xFF6600;
+    private static final int COLOR_DEATH_MARK    = (0xFF << 24) | 0x44FF44;
+    private static final int COLOR_SHADOW_STRIKE = (0xFF << 24) | 0xCCCCCC;
+    private static final int COLOR_STORM_CHAIN   = (0xFF << 24) | 0x00FFFF;
 
     // ── JOIN / LOGOUT ────────────────────────────────────────────────────────
 
@@ -56,7 +64,7 @@ public class AbilityLogicHandler {
         if (event.getEntity() instanceof ServerPlayer sp) joinTimers.remove(sp.getUUID());
     }
 
-    // ── TICK ──────────────────────────────────────────────────────────────────
+    // ── TICK ─────────────────────────────────────────────────────────────────
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
@@ -64,6 +72,7 @@ public class AbilityLogicHandler {
         UUID id = sp.getUUID();
         ServerLevel level = (ServerLevel) sp.level();
 
+        // Join assignment countdown
         if (joinTimers.containsKey(id)) {
             int t = joinTimers.get(id) + 1;
             joinTimers.put(id, t);
@@ -77,6 +86,10 @@ public class AbilityLogicHandler {
         PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
         data.tickCooldown();
         if (data.isActive()) data.tickActive();
+        if (data.isCharging()) data.tickCharge();
+
+        // HUD unlock countdown
+        tickHudUnlock(sp);
 
         // Magma Cage pulse
         if (magmaCageTicks.containsKey(id)) {
@@ -102,12 +115,42 @@ public class AbilityLogicHandler {
             }
         }
 
+        // Ambient passive aura: only when ability is ready and hud is unlocked
+        if (data.hasAbility() && !data.isOnCooldown() && data.isHudUnlocked()) {
+            spawnAmbientAura(level, sp, data.getAbility());
+        }
+
         if (sp.tickCount % 5 == 0) syncTo(sp, data);
+    }
+
+    // ── CHARGE API ───────────────────────────────────────────────────────────
+
+    public static void beginCharge(ServerPlayer sp) {
+        PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
+        if (!data.hasAbility() || data.isOnCooldown() || data.isCharging()) return;
+        data.resetCharge();
+        data.setCharging(true);
+        Vec3 pos = sp.position();
+        sp.level().playSound(null, pos.x, pos.y, pos.z,
+                SoundEvents.NOTE_BLOCK_CHIME.value(), SoundSource.PLAYERS, 0.4f, 1.6f);
+        syncTo(sp, data);
+    }
+
+    public static void releaseCharge(ServerPlayer sp) {
+        PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
+        if (!data.hasAbility() || !data.isCharging()) return;
+        int charged = data.getChargeTicks();
+        data.resetCharge();
+        activateAbility(sp, charged);
     }
 
     // ── ACTIVATION ───────────────────────────────────────────────────────────
 
     public static void activateAbility(ServerPlayer sp) {
+        activateAbility(sp, 40);
+    }
+
+    public static void activateAbility(ServerPlayer sp, int chargeTicks) {
         PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
         if (!data.hasAbility()) return;
         if (data.isOnCooldown()) {
@@ -116,7 +159,8 @@ public class AbilityLogicHandler {
         }
         AbilityType type = data.getAbility();
         ServerLevel level = (ServerLevel) sp.level();
-        triggerAbility(sp, type, level);
+        float charge = 0.5f + 0.5f * Math.min(1f, chargeTicks / 40f);
+        triggerAbility(sp, type, level, charge);
         data.setCooldownRemaining(type.getCooldownTicks());
         data.setActiveRemaining(type.getDurationTicks());
         Vec3 pos = sp.position();
@@ -127,15 +171,17 @@ public class AbilityLogicHandler {
 
     // ── ABILITY IMPLEMENTATIONS ───────────────────────────────────────────────
 
-    private static void triggerAbility(ServerPlayer sp, AbilityType type, ServerLevel level) {
+    private static void triggerAbility(ServerPlayer sp, AbilityType type,
+                                        ServerLevel level, float charge) {
         Vec3 pos = sp.position();
         switch (type) {
 
             case NULL_RIFT -> {
-                List<LivingEntity> targets = getNearby(level, sp, 5.0);
+                double radius = 5.0 * charge;
+                List<LivingEntity> targets = getNearby(level, sp, radius);
                 List<UUID> ids = new ArrayList<>();
                 for (LivingEntity e : targets) {
-                    Vec3 pull = pos.add(0, 1, 0).subtract(e.position()).normalize().scale(2.5);
+                    Vec3 pull = pos.add(0, 1, 0).subtract(e.position()).normalize().scale(2.5 * charge);
                     e.setDeltaMovement(pull);
                     e.hurtMarked = true;
                     e.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 25, 0, false, false));
@@ -151,17 +197,17 @@ public class AbilityLogicHandler {
             case MAGMA_CAGE -> {
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.BLAZE_SHOOT, SoundSource.PLAYERS, 1.0f, 0.6f);
-                getNearby(level, sp, 4.0).forEach(e -> {
+                getNearby(level, sp, 4.0 * charge).forEach(e -> {
                     e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, false, false));
-                    e.igniteForSeconds(2);
+                    e.igniteForSeconds((int)(2 * charge));
                 });
-                magmaCageTicks.put(sp.getUUID(), 100);
+                magmaCageTicks.put(sp.getUUID(), (int)(100 * charge));
                 sp.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 120, 0, false, false));
             }
 
             case DEATH_MARK -> {
                 Set<UUID> marked = new HashSet<>();
-                getNearby(level, sp, 6.0).forEach(e -> {
+                getNearby(level, sp, 6.0 * charge).forEach(e -> {
                     e.addEffect(new MobEffectInstance(MobEffects.GLOWING, 120, 0, false, false));
                     e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 120, 1, false, false));
                     marked.add(e.getUUID());
@@ -176,10 +222,11 @@ public class AbilityLogicHandler {
             case SHADOW_STRIKE -> {
                 Vec3 look  = sp.getLookAngle();
                 Vec3 start = sp.getEyePosition();
+                double range = 10.0 * charge;
                 LivingEntity hit = null;
                 double closest = Double.MAX_VALUE;
                 for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class,
-                        new AABB(start, start.add(look.scale(10.0))).inflate(1.5))) {
+                        new AABB(start, start.add(look.scale(range))).inflate(1.5))) {
                     if (e == sp) continue;
                     double dist = e.distanceTo(sp);
                     if (dist < closest) { closest = dist; hit = e; }
@@ -187,13 +234,14 @@ public class AbilityLogicHandler {
                 if (hit != null) {
                     Vec3 behind = hit.position().subtract(look.normalize().scale(1.2));
                     sp.teleportTo(behind.x, behind.y, behind.z);
-                    hit.hurt(level.damageSources().playerAttack(sp), 10.0f);
+                    hit.hurt(level.damageSources().playerAttack(sp), 10.0f * charge);
                     hit.addEffect(new MobEffectInstance(MobEffects.WITHER, 80, 1, false, false));
                     spawnWitherCloud(level, hit.position());
                     level.playSound(null, behind.x, behind.y, behind.z,
                             SoundEvents.PHANTOM_BITE, SoundSource.PLAYERS, 1.0f, 1.3f);
                 } else {
-                    Vec3 dest = pos.add(look.normalize().scale(6.0));
+                    double blinkRange = 6.0 * charge;
+                    Vec3 dest = pos.add(look.normalize().scale(blinkRange));
                     sp.teleportTo(dest.x, dest.y, dest.z);
                     level.playSound(null, dest.x, dest.y, dest.z,
                             SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 0.8f, 1.5f);
@@ -202,17 +250,17 @@ public class AbilityLogicHandler {
             }
 
             case STORM_CHAIN -> {
-                List<LivingEntity> pool = getNearby(level, sp, 8.0);
+                List<LivingEntity> pool = getNearby(level, sp, 8.0 * charge);
                 pool.sort(Comparator.comparingDouble(e -> e.distanceTo(sp)));
-                int chains = Math.min(4, pool.size());
+                int chains = Math.min((int)(2 + 2 * charge), pool.size());
                 LivingEntity last = null;
                 for (int i = 0; i < chains; i++) {
                     LivingEntity target = pool.get(i);
                     LightningBolt bolt = new LightningBolt(EntityType.LIGHTNING_BOLT, level);
                     bolt.setPos(target.getX(), target.getY(), target.getZ());
-                    bolt.setVisualOnly(false);
+                    bolt.setVisualOnly(true);
                     level.addFreshEntity(bolt);
-                    target.hurt(level.damageSources().playerAttack(sp), 5.0f);
+                    target.hurt(level.damageSources().playerAttack(sp), 5.0f * charge);
                     target.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, 1, false, false));
                     target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 80, 0, false, false));
                     if (last != null)
@@ -222,6 +270,41 @@ public class AbilityLogicHandler {
                 sp.addEffect(new MobEffectInstance(MobEffects.SPEED, 60, 1, false, false));
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.PLAYERS, 0.8f, 1.3f);
+            }
+        }
+    }
+
+    // ── AMBIENT PASSIVE AURA ─────────────────────────────────────────────────
+
+    private static void spawnAmbientAura(ServerLevel level, ServerPlayer sp, AbilityType type) {
+        if (sp.tickCount % 4 != 0) return;
+        Vec3 pos = sp.position().add(0, 1.0, 0);
+        double angle = (sp.tickCount * 18.0) * Math.PI / 180.0;
+        double r = 0.6;
+        double ox = Math.cos(angle) * r;
+        double oz = Math.sin(angle) * r;
+        switch (type) {
+            case NULL_RIFT -> {
+                level.sendParticles(new DustParticleOptions(COLOR_NULL_RIFT, 0.5f),
+                        pos.x + ox, pos.y, pos.z + oz, 1, 0.05, 0.1, 0.05, 0.0);
+                level.sendParticles(new DustParticleOptions(COLOR_NULL_RIFT, 0.5f),
+                        pos.x - ox, pos.y, pos.z - oz, 1, 0.05, 0.1, 0.05, 0.0);
+            }
+            case MAGMA_CAGE -> {
+                level.sendParticles(new DustParticleOptions(COLOR_MAGMA_CAGE, 0.6f),
+                        pos.x + ox * 0.5, pos.y, pos.z + oz * 0.5, 1, 0.1, 0.05, 0.1, 0.01);
+            }
+            case DEATH_MARK -> {
+                level.sendParticles(new DustParticleOptions(COLOR_DEATH_MARK, 0.4f),
+                        pos.x + ox, pos.y - 0.5, pos.z + oz, 1, 0.02, 0.02, 0.02, 0.0);
+            }
+            case SHADOW_STRIKE -> {
+                level.sendParticles(new DustParticleOptions(COLOR_SHADOW_STRIKE, 0.4f),
+                        pos.x + ox * 0.4, pos.y + 0.5, pos.z + oz * 0.4, 1, 0.02, 0.15, 0.02, 0.0);
+            }
+            case STORM_CHAIN -> {
+                level.sendParticles(new DustParticleOptions(COLOR_STORM_CHAIN, 0.5f),
+                        pos.x + ox, pos.y + 0.3, pos.z + oz, 1, 0.05, 0.05, 0.05, 0.02);
             }
         }
     }
@@ -287,9 +370,10 @@ public class AbilityLogicHandler {
         PlayerAbilityData data = victim.getData(AbilityAttachment.ABILITY_DATA.get());
         if (!data.hasAbility()) return;
         AbilityType type = data.getAbility();
+        int cooldownSnapshot = data.getCooldownRemaining();
         ServerLevel level = (ServerLevel) victim.level();
         Vec3 pos = victim.position();
-        ItemStack orb = AbilityItem.forAbility(type);
+        ItemStack orb = AbilityItem.forAbility(type, cooldownSnapshot);
         ItemEntity ie = new ItemEntity(level, pos.x, pos.y + 0.5, pos.z, orb);
         ie.setPickUpDelay(20);
         level.addFreshEntity(ie);
@@ -304,7 +388,7 @@ public class AbilityLogicHandler {
         riftDetonation.remove(victim.getUUID());
         riftTargets.remove(victim.getUUID());
         victim.displayClientMessage(Component.literal("\u00a7cYou lost your power!"), false);
-        PacketHandler.sendToPlayer(victim, new SyncAbilityPacket("", 0, 0));
+        PacketHandler.sendToPlayer(victim, new SyncAbilityPacket("", 0, 0, false, 0, false));
     }
 
     // ── RESPAWN: keep ability on natural death ────────────────────────────────
@@ -317,7 +401,34 @@ public class AbilityLogicHandler {
         PlayerAbilityData neo = event.getEntity().getData(AbilityAttachment.ABILITY_DATA.get());
         neo.setAbility(old.getAbility());
         neo.setCooldownRemaining(old.getCooldownRemaining());
+        if (old.isHudUnlocked()) neo.unlockHud();
         assigned.add(event.getEntity().getUUID());
+    }
+
+    // ── HUD UNLOCK ───────────────────────────────────────────────────────────
+
+    public static void unlockHud(ServerPlayer sp) {
+        PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
+        if (!data.isHudUnlocked()) {
+            data.unlockHud();
+            syncTo(sp, data);
+        }
+    }
+
+    private static void scheduleHudUnlock(ServerPlayer sp, int delayTicks) {
+        hudUnlockTimers.put(sp.getUUID(), delayTicks);
+    }
+
+    private static void tickHudUnlock(ServerPlayer sp) {
+        UUID id = sp.getUUID();
+        if (!hudUnlockTimers.containsKey(id)) return;
+        int t = hudUnlockTimers.get(id) - 1;
+        if (t <= 0) {
+            hudUnlockTimers.remove(id);
+            unlockHud(sp);
+        } else {
+            hudUnlockTimers.put(id, t);
+        }
     }
 
     // ── UTILS ─────────────────────────────────────────────────────────────────
@@ -330,6 +441,7 @@ public class AbilityLogicHandler {
         data.setCooldownRemaining(0);
         PacketHandler.sendToPlayer(sp, new TitleRevealPacket(chosen.name()));
         syncTo(sp, data);
+        scheduleHudUnlock(sp, 340);
         powers.LOGGER.info("[Powers] Assigned {} to {}", chosen.name(), sp.getName().getString());
     }
 
@@ -337,7 +449,10 @@ public class AbilityLogicHandler {
         PacketHandler.sendToPlayer(sp, new SyncAbilityPacket(
                 data.hasAbility() ? data.getAbility().name() : "",
                 data.getCooldownRemaining(),
-                data.hasAbility() ? data.getAbility().getCooldownTicks() : 0));
+                data.hasAbility() ? data.getAbility().getCooldownTicks() : 0,
+                data.isCharging(),
+                data.getChargeTicks(),
+                data.isHudUnlocked()));
     }
 
     private static List<LivingEntity> getNearby(ServerLevel level, ServerPlayer sp, double r) {
