@@ -5,9 +5,9 @@ import net.minecraft.client.KeyMapping;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
-import net.neoforged.neoforge.event.tick.ClientTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import powerful.powers.network.UseAbilityPacket;
 import powerful.powers.powers;
@@ -16,16 +16,20 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Registers the Use Ability keybind (default: R).
  *
- * NeoForge 21.11:
- *   - KeyMapping constructor: (String, IKeyConflictContext, InputConstants.Key, KeyMapping.Category)
- *     The last arg is KeyMapping.Category (enum), not a plain String.
- *     We use VANILLA_OR_CONSTANT categories from KeyMapping.Categories, or create via
- *     KeyMapping.Category.create(translationKey) if available.
- *   - RegisterKeyMappingsEvent is on MOD bus -> use @EventBusSubscriber Bus.MOD
- *   - ClientTickEvent.Post is on GAME (FORGE) bus -> separate class without Bus.MOD
- *   - PacketDistributor.sendToServer(payload) is the correct static method.
+ * NeoForge 21.11 EventBusSubscriber rules:
+ *   - The annotation has NO 'bus' element.
+ *   - Events that implement IModBusEvent (e.g. RegisterKeyMappingsEvent) auto-route to the MOD bus.
+ *   - All other events (e.g. ClientTickEvent) auto-route to the FORGE (game) bus.
+ *   - So both classes below use @EventBusSubscriber without a bus= parameter.
+ *
+ * KeyMapping NeoForge constructor: (String translationKey, IKeyConflictContext, InputConstants.Key, String categoryKey)
+ *   - The last argument is a plain translation key String for the category.
+ *
+ * PacketDistributor in NeoForge 21.11:
+ *   - Serverbound packets: PacketDistributor.sendToServer(payload)
+ *     (This is a static method on PacketDistributor itself in 21.11 — confirmed in the 21.11 javadoc.)
  */
-@EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT)
 public class AbilityKeybind {
 
     public static KeyMapping USE_ABILITY_KEY;
@@ -36,15 +40,14 @@ public class AbilityKeybind {
             "key.powers.use_ability",
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_R),
-            // KeyMapping.Category is an enum in 1.21.11 — use GAMEPLAY or create custom
-            KeyMapping.Category.GAMEPLAY
+            "key.categories.powers"
         );
         event.register(USE_ABILITY_KEY);
     }
 
     /**
-     * Input listener on the FORGE (game) bus.
-     * Note: no 'bus = Bus.MOD' here — default is FORGE bus.
+     * Separate inner class so both event types can live in the same file.
+     * ClientTickEvent is a game bus event, so this also uses no bus= param.
      */
     @EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT)
     public static class InputListener {
