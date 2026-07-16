@@ -1,28 +1,50 @@
 package powerful.powers.client;
 
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.EventBusSubscriber;
-import powerful.powers.ability.AbilityType;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+import powerful.powers.network.AbilityFxPacket;
 import powerful.powers.network.SyncAbilityPacket;
 import powerful.powers.network.TitleRevealPacket;
 
-/**
- * Static handlers called by {@link powerful.powers.network.ModNetwork}
- * when packets arrive on the client.
- */
-@EventBusSubscriber(modid = powerful.powers.powers.MODID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
-public final class ClientPacketHandlers {
+public class ClientPacketHandlers {
 
-    private ClientPacketHandlers() {}
+    /** Primary handler for SyncAbilityPacket (used by ModNetwork). */
+    public static void onSyncAbility(SyncAbilityPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            // Update rich HUD data
+            ClientAbilityData.update(packet);
 
-    /** Called when a {@link SyncAbilityPacket} arrives. */
-    public static void handleSync(SyncAbilityPacket packet) {
-        ClientAbilityData.onSync(packet);
+            // Mirror into ClientAbilityState for announcement logic
+            boolean wasAnnounced = ClientAbilityState.announced;
+            ClientAbilityState.type          = packet.resolveType();
+            ClientAbilityState.cooldownTicks = packet.cooldownTicks();
+            ClientAbilityState.announced     = packet.hudUnlocked();
+
+            // Trigger announcement sequence if ability is new and HUD not yet unlocked
+            if (!wasAnnounced && !packet.hudUnlocked() && packet.resolveType() != null) {
+                ClientAbilityState.showingAnnouncement = true;
+                ClientAbilityState.announcementTimer   = ClientAbilityState.ANNOUNCE_DURATION;
+                ClientAbilityState.nameRevealTimer     = 0;
+            }
+        });
     }
 
-    /** Called when a {@link TitleRevealPacket} arrives — starts the reveal animation. */
-    public static void handleReveal(TitleRevealPacket packet) {
-        AbilityType type = packet.resolveType();
-        if (type != null) ClientTitleRevealState.startReveal(type);
+    /** Alias — called by any remaining PacketHandler references. */
+    public static void handleSyncAbility(SyncAbilityPacket packet, IPayloadContext ctx) {
+        onSyncAbility(packet, ctx);
+    }
+
+    /** Handler for TitleRevealPacket. */
+    public static void handleTitleReveal(TitleRevealPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> AbilityTitleRenderer.triggerReveal(packet.abilityName()));
+    }
+
+    /** Handler for AbilityFxPacket (client-side particle hook, currently a no-op). */
+    public static void handleAbilityFx(AbilityFxPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            if (mc.level == null) return;
+            // Server already spawns particles via sendParticles.
+            // This hook is reserved for future client-only custom particle effects.
+        });
     }
 }

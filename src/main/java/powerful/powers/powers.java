@@ -14,14 +14,12 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import powerful.powers.ability.AbilityAttachment;
 import powerful.powers.ability.AbilityRegistry;
 import powerful.powers.command.AbilityCommand;
-import powerful.powers.network.PacketHandler;
+import powerful.powers.network.ModNetwork;
 
 @Mod(powers.MODID)
 public class powers {
@@ -29,7 +27,6 @@ public class powers {
     public static final String MODID = "powers";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    // Creative tab
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
@@ -44,25 +41,18 @@ public class powers {
                     .build());
 
     public powers(IEventBus modEventBus, ModContainer modContainer) {
-        // Register subsystems
         AbilityAttachment.register(modEventBus);
         AbilityRegistry.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
 
-        // Register network packets
-        modEventBus.addListener(this::registerPayloads);
+        // Single registration point — ModNetwork handles all packets
+        modEventBus.addListener(ModNetwork::register);
 
         modEventBus.addListener(this::commonSetup);
         NeoForge.EVENT_BUS.register(this);
-        // AbilityCommand registers itself via @EventBusSubscriber + RegisterCommandsEvent
         NeoForge.EVENT_BUS.register(AbilityCommand.class);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-    }
-
-    private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(MODID);
-        PacketHandler.register(registrar);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
