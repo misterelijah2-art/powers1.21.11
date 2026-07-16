@@ -8,9 +8,9 @@ public enum AbilityType {
     VOIDSTEP(
         "Voidstep",
         ChatFormatting.DARK_PURPLE,
-        "\u00a75✴",
-        200,  // 10s cooldown
-        60    // 3s charge for full
+        "\u00a75\u2744",
+        200,
+        60
     ),
     SOULFLARE(
         "Soulflare",
@@ -44,18 +44,23 @@ public enum AbilityType {
     public final String displayName;
     public final ChatFormatting color;
     public final String icon;
-    public final int cooldownTicks;   // full cooldown in ticks
-    public final int chargeMaxTicks;  // ticks to hold for full charge
+    public final int cooldownTicks;
+    public final int chargeMaxTicks;
 
     AbilityType(String displayName, ChatFormatting color, String icon,
                 int cooldownTicks, int chargeMaxTicks) {
-        this.displayName = displayName;
-        this.color = color;
-        this.icon = icon;
-        this.cooldownTicks = cooldownTicks;
+        this.displayName    = displayName;
+        this.color          = color;
+        this.icon           = icon;
+        this.cooldownTicks  = cooldownTicks;
         this.chargeMaxTicks = chargeMaxTicks;
     }
 
+    public String getDisplayName()   { return displayName; }
+    public ChatFormatting getColor() { return color; }
+    public int getCooldownTicks()    { return cooldownTicks; }
+    public int getDurationTicks()    { return chargeMaxTicks; }
+    public Component getTitle()      { return Component.literal(displayName).withStyle(color); }
     public Component getDisplayComponent() {
         return Component.literal(displayName).withStyle(color);
     }

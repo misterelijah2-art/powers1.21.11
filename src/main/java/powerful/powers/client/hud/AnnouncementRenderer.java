@@ -1,28 +1,19 @@
 package powerful.powers.client.hud;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
-import powerful.powers.client.ClientAbilityState;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import powerful.powers.ability.AbilityType;
+import powerful.powers.client.ClientAbilityState;
 
-/**
- * Full-screen announcement renderer.
- *
- * Sequence (total 120 ticks = 6s):
- *   0-49  : dark overlay fades in + "??? " pulsing text (suspense pause)
- *   50-69 : flash + ability name bursts in with glow
- *   70-119: name shown, overlay fades out
- *
- * HUD is NOT drawn while showingAnnouncement is true.
- */
+@OnlyIn(Dist.CLIENT)
 public class AnnouncementRenderer {
 
-    private static final int TOTAL   = ClientAbilityState.ANNOUNCE_DURATION;   // 120
-    private static final int PAUSE   = ClientAbilityState.PRE_REVEAL_PAUSE;    // 50
-    private static final int REVEAL  = 20;  // 20 ticks flash duration
+    private static final int TOTAL  = ClientAbilityState.ANNOUNCE_DURATION;
+    private static final int PAUSE  = ClientAbilityState.PRE_REVEAL_PAUSE;
+    private static final int REVEAL = 20;
 
     public static void render(GuiGraphics gfx, float partialTick) {
         if (!ClientAbilityState.showingAnnouncement) return;
@@ -32,108 +23,87 @@ public class AnnouncementRenderer {
         Minecraft mc = Minecraft.getInstance();
         int W = mc.getWindow().getGuiScaledWidth();
         int H = mc.getWindow().getGuiScaledHeight();
-        int cx = W / 2;
-        int cy = H / 2;
-
-        int timer = ClientAbilityState.announcementTimer; // counts DOWN from 120
-        int elapsed = TOTAL - timer; // 0..120
-
+        int cx = W / 2, cy = H / 2;
         Font font = mc.font;
 
-        // --- Overlay darkness ---
+        int timer   = ClientAbilityState.announcementTimer;
+        int elapsed = TOTAL - timer;
+
         float overlayAlpha;
-        if (elapsed < 10) {
-            overlayAlpha = elapsed / 10f * 0.75f;       // fade in
-        } else if (timer < 30) {
-            overlayAlpha = (timer / 30f) * 0.75f;       // fade out
-        } else {
-            overlayAlpha = 0.75f;
-        }
-        int overlayColor = (int)(overlayAlpha * 255) << 24;
-        gfx.fill(0, 0, W, H, overlayColor);
+        if      (elapsed < 10) overlayAlpha = elapsed / 10f * 0.75f;
+        else if (timer < 30)   overlayAlpha = (timer / 30f) * 0.75f;
+        else                   overlayAlpha = 0.75f;
+        gfx.fill(0, 0, W, H, (int)(overlayAlpha * 255) << 24);
 
         if (elapsed < PAUSE) {
-            // Suspense phase: show "???" pulsing
             float pulse = (float)(0.6 + 0.4 * Math.sin(elapsed * 0.3));
-            int alpha = (int)(pulse * 200);
-            String suspense = "\u00a78??? ";
+            int alpha   = (int)(pulse * 200);
+            String suspense = "\u00a78???";
             int sw = font.width(suspense);
             gfx.pose().pushPose();
-            gfx.pose().translate(cx - sw * 0.9, cy - 6, 0);
+            gfx.pose().translate(cx - sw * 0.9f, cy - 6f, 0f);
             gfx.pose().scale(1.8f, 1.8f, 1f);
-            gfx.drawString(font, suspense, 0, 0, (alpha << 24) | 0xFFFFFF, false);
+            gfx.drawString(font, suspense, 0, 0, (alpha << 24) | 0x888888, true);
             gfx.pose().popPose();
-
-            // Sub-text
-            String sub = "A power stirs within you...";
-            int subAlpha = (int)(overlayAlpha * 180);
-            gfx.drawCenteredString(font, Component.literal(sub)
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY),
-                    cx, cy + 24, (subAlpha << 24) | 0xAAAAAA);
-
         } else {
-            // Reveal phase
-            int revealElapsed = elapsed - PAUSE; // 0..70
+            int phase = elapsed - PAUSE;
 
-            // Flash bang at moment of reveal
-            if (revealElapsed < REVEAL) {
-                float flashAlpha = Math.max(0f, 1f - revealElapsed / (float) REVEAL);
-                int flashColor = (int)(flashAlpha * 220) << 24 | 0xFFFFFF;
-                gfx.fill(0, 0, W, H, flashColor);
+            if (phase < REVEAL) {
+                float flashA = 1f - (phase / (float) REVEAL);
+                gfx.fill(0, 0, W, H, (int)(flashA * 200) << 24 | 0xFFFFFF);
             }
 
-            // Ability name
-            float nameScale;
-            if (revealElapsed < 8) {
-                nameScale = 1.0f + (8 - revealElapsed) * 0.3f; // burst in big
+            float scale, alpha;
+            if (phase < REVEAL) {
+                float p = phase / (float) REVEAL;
+                scale = 4f - p * 2f;
+                alpha = p;
             } else {
-                nameScale = 2.2f;
+                int hold = phase - REVEAL;
+                scale = 2.0f;
+                int fadeStart = TOTAL - PAUSE - REVEAL - 30;
+                alpha = hold < fadeStart ? 1f
+                        : Math.max(0f, 1f - (hold - fadeStart) / 30f);
             }
-            // Fade in name
-            float nameAlpha;
-            if (revealElapsed < 10) {
-                nameAlpha = revealElapsed / 10f;
-            } else if (timer < 20) {
-                nameAlpha = timer / 20f;
-            } else {
-                nameAlpha = 1.0f;
-            }
-            int nameAlphaInt = (int)(nameAlpha * 255);
+            alpha = Math.max(0f, Math.min(1f, alpha));
 
-            String nameText = type.icon + " " + type.displayName;
-            int nw = font.width(nameText);
+            String name  = type.displayName;
+            int    textW = font.width(name);
+
+            if (alpha > 0.1f) {
+                int glowColor = (int)(alpha * 0.35f * 255) << 24 | (colorRgb(type) & 0xFFFFFF);
+                int gw = (int)(textW * scale * 1.4f) + 20;
+                int gh = (int)(font.lineHeight * scale * 1.4f) + 10;
+                gfx.fill(cx - gw / 2, cy - gh / 2, cx + gw / 2, cy + gh / 2, glowColor);
+            }
+
+            int a = (int)(alpha * 255);
+            Integer rawColor = type.getColor().getColor();
+            int colorCode = rawColor != null ? rawColor : 0xFFFFFF;
+            int color = (a << 24) | (colorCode & 0x00FFFFFF);
 
             gfx.pose().pushPose();
-            float tx = cx - (nw * nameScale * 0.5f);
-            float ty = cy - 9 * nameScale * 0.5f;
-            gfx.pose().translate(tx, ty, 0);
-            gfx.pose().scale(nameScale, nameScale, 1f);
-
-            // Shadow glow: draw name multiple times slightly offset in ability color
-            int colorInt = net.minecraft.util.FastColor.ARGB32.color(
-                    nameAlphaInt / 2, 255, 255, 255);
-            for (int ox = -1; ox <= 1; ox++) {
-                for (int oy = -1; oy <= 1; oy++) {
-                    if (ox == 0 && oy == 0) continue;
-                    gfx.drawString(font, nameText, ox, oy, colorInt, false);
-                }
-            }
-            // Main name in ability color
-            gfx.drawString(font,
-                    Component.literal(nameText).withStyle(type.color),
-                    0, 0,
-                    net.minecraft.util.FastColor.ARGB32.color(nameAlphaInt, 255, 255, 255),
-                    true);
+            gfx.pose().translate(cx, cy, 0f);
+            gfx.pose().scale(scale, scale, 1f);
+            gfx.drawString(font, name, -textW / 2, -font.lineHeight / 2, color, true);
             gfx.pose().popPose();
 
-            // Sub-label
-            float subAlpha = (float) Math.min(1.0, revealElapsed / 15.0);
-            if (timer < 20) subAlpha = timer / 20f;
-            gfx.drawCenteredString(font,
-                    Component.literal("Your ability has been bestowed")
-                            .withStyle(net.minecraft.ChatFormatting.GRAY),
-                    cx, cy + 28,
-                    net.minecraft.util.FastColor.ARGB32.color((int)(subAlpha * 200), 200, 200, 200));
+            if (phase > REVEAL + 10 && alpha > 0.3f) {
+                int subA = (int)(Math.min(1f, (phase - REVEAL - 10) / 20f) * alpha * 180f);
+                String sub = "Hold [R] to charge, release to activate";
+                gfx.drawString(font, sub, (W - font.width(sub)) / 2, cy + 28,
+                        (subA << 24) | 0xAAAAAA, false);
+            }
         }
+    }
+
+    private static int colorRgb(AbilityType type) {
+        return switch (type) {
+            case VOIDSTEP      -> 0xAA00AA;
+            case SOULFLARE     -> 0xFFAA00;
+            case GLACIAL_PULSE -> 0x55FFFF;
+            case WRAITH_SHROUD -> 0xDCDCDC;
+            case THUNDER_CRASH -> 0xFFFF55;
+        };
     }
 }

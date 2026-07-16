@@ -16,25 +16,28 @@ public class PacketHandler {
         reg.playToClient(
                 SyncAbilityPacket.TYPE,
                 SyncAbilityPacket.STREAM_CODEC,
-                (pkt, ctx) -> ClientPacketHandlers.handleSyncAbility(pkt, ctx));
+                ClientPacketHandlers::onSyncAbility);
 
         reg.playToClient(
                 TitleRevealPacket.TYPE,
                 TitleRevealPacket.STREAM_CODEC,
-                (pkt, ctx) -> ClientPacketHandlers.handleTitleReveal(pkt, ctx));
+                ClientPacketHandlers::onTitleReveal);
 
         reg.playToClient(
                 AbilityFxPacket.TYPE,
                 AbilityFxPacket.STREAM_CODEC,
-                (pkt, ctx) -> ClientPacketHandlers.handleAbilityFx(pkt, ctx));
+                ClientPacketHandlers::onAbilityFx);
 
         // client -> server
         reg.playToServer(
                 UseAbilityPacket.TYPE,
                 UseAbilityPacket.STREAM_CODEC,
                 (pkt, ctx) -> ctx.enqueueWork(() -> {
-                    if (ctx.player() instanceof ServerPlayer sp)
-                        AbilityLogicHandler.activateAbility(sp);
+                    if (ctx.player() instanceof ServerPlayer sp) {
+                        if (pkt.chargeTicks() == -1) {
+                            AbilityLogicHandler.onClientAnnouncementDone(sp);
+                        }
+                    }
                 }));
 
         reg.playToServer(

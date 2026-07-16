@@ -1,33 +1,32 @@
 package powerful.powers.network;
 
-import net.minecraft.network.FriendlyByteBuf;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import powerful.powers.powers;
 
 /**
- * Client -> Server: player pressed or released ability keybind.
- * pressed=true  -> start charging
- * pressed=false -> release / fire
- * chargeTicks   -> how many ticks the key was held (client counted)
+ * Client -> Server: pressed=true means start charging, false means release.
+ * chargeTicks=-1 is a special signal that the announcement animation finished.
  */
 public record UseAbilityPacket(
         boolean pressed,
-        int chargeTicks
+        int     chargeTicks
 ) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<UseAbilityPacket> TYPE =
-            new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath("powers", "use_ability"));
+            new CustomPacketPayload.Type<>(
+                    ResourceLocation.fromNamespaceAndPath(powers.MODID, "use_ability"));
 
-    public static final StreamCodec<FriendlyByteBuf, UseAbilityPacket> CODEC =
+    public static final StreamCodec<ByteBuf, UseAbilityPacket> STREAM_CODEC =
             StreamCodec.composite(
-                    net.minecraft.network.codec.ByteBufCodecs.BOOL, UseAbilityPacket::pressed,
-                    net.minecraft.network.codec.ByteBufCodecs.INT,  UseAbilityPacket::chargeTicks,
+                    ByteBufCodecs.BOOL,    UseAbilityPacket::pressed,
+                    ByteBufCodecs.VAR_INT, UseAbilityPacket::chargeTicks,
                     UseAbilityPacket::new
             );
 
     @Override
-    public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
-        return TYPE;
-    }
+    public CustomPacketPayload.Type<UseAbilityPacket> type() { return TYPE; }
 }
