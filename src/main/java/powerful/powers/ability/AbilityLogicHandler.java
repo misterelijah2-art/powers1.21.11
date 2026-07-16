@@ -32,7 +32,7 @@ import java.util.UUID;
 
 /**
  * Server-side game event handler.
- * NeoForge 21.11: @EventBusSubscriber defaults to FORGE bus — no Bus.GAME needed.
+ * @EventBusSubscriber with no bus param defaults to the FORGE (game) bus in NeoForge 21.11.
  */
 @EventBusSubscriber(modid = powers.MODID)
 public class AbilityLogicHandler {
@@ -140,7 +140,7 @@ public class AbilityLogicHandler {
                 level.getEntitiesOfClass(LivingEntity.class, sp.getBoundingBox().inflate(5.0))
                     .stream().filter(e -> e != sp).forEach(e -> {
                         e.hurt(level.damageSources().playerAttack(sp), 6.0f);
-                        e.igniteForSeconds(5); // 1.21.11: replaces setSecondsOnFire
+                        e.igniteForSeconds(5);
                     });
                 sp.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 100, 0, false, false));
             }
@@ -149,7 +149,7 @@ public class AbilityLogicHandler {
                 spawnParticles(level, pos, ParticleTypes.SOUL_FIRE_FLAME, 20);
                 level.playSound(null, pos.x, pos.y, pos.z,
                     SoundEvents.AMBIENT_SOUL_SAND_VALLEY_MOOD, SoundSource.PLAYERS, 1.0f, 1.2f);
-                sp.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 80 * 20, 2, false, false)); // 1.21.11: DAMAGE_RESISTANCE -> RESISTANCE
+                sp.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 80 * 20, 2, false, false));
                 sp.addEffect(new MobEffectInstance(MobEffects.REGENERATION, 40 * 20, 1, false, false));
             }
             case PHANTOM_LUNGE -> {
@@ -169,7 +169,8 @@ public class AbilityLogicHandler {
                 level.getEntitiesOfClass(LivingEntity.class, sp.getBoundingBox().inflate(6.0))
                     .stream().filter(e -> e != sp).forEach(e -> {
                         LightningBolt bolt = new LightningBolt(EntityType.LIGHTNING_BOLT, level);
-                        bolt.moveTo(e.getX(), e.getY(), e.getZ()); // 1.21.11: moveTo(x,y,z) not moveTo(Vec3)
+                        // MC 1.21.11: use setPos(x,y,z) — moveTo(x,y,z) was removed on LightningBolt
+                        bolt.setPos(e.getX(), e.getY(), e.getZ());
                         bolt.setVisualOnly(false);
                         level.addFreshEntity(bolt);
                         e.addEffect(new MobEffectInstance(MobEffects.GLOWING, 100, 0, false, false));
