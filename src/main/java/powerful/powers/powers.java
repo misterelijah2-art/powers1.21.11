@@ -20,6 +20,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import powerful.powers.ability.AbilityAttachment;
 import powerful.powers.ability.AbilityRegistry;
+import powerful.powers.command.AbilityCommand;
 import powerful.powers.network.PacketHandler;
 
 @Mod(powers.MODID)
@@ -53,6 +54,8 @@ public class powers {
 
         modEventBus.addListener(this::commonSetup);
         NeoForge.EVENT_BUS.register(this);
+        // AbilityCommand registers itself via @EventBusSubscriber + RegisterCommandsEvent
+        NeoForge.EVENT_BUS.register(AbilityCommand.class);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
