@@ -143,8 +143,7 @@ public class AbilityLogicHandler {
                 }
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.CONDUIT_ACTIVATE, SoundSource.PLAYERS, 1.2f, 0.5f);
-                // RESISTANCE was renamed to DAMAGE_RESISTANCE in 1.21.x
-                sp.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 30, 0, false, false));
+                sp.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 30, 0, false, false));
                 riftDetonation.put(sp.getUUID(), 20);
                 riftTargets.put(sp.getUUID(), ids);
             }
@@ -153,8 +152,7 @@ public class AbilityLogicHandler {
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.BLAZE_SHOOT, SoundSource.PLAYERS, 1.0f, 0.6f);
                 getNearby(level, sp, 4.0).forEach(e -> {
-                    // SLOWNESS was renamed to MOVEMENT_SLOWDOWN in 1.21.x
-                    e.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 2, false, false));
+                    e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, false, false));
                     e.igniteForSeconds(2);
                 });
                 magmaCageTicks.put(sp.getUUID(), 100);
@@ -215,14 +213,13 @@ public class AbilityLogicHandler {
                     bolt.setVisualOnly(false);
                     level.addFreshEntity(bolt);
                     target.hurt(level.damageSources().playerAttack(sp), 5.0f);
-                    // SLOWNESS was renamed to MOVEMENT_SLOWDOWN in 1.21.x
-                    target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 60, 1, false, false));
+                    target.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, 1, false, false));
                     target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 80, 0, false, false));
                     if (last != null)
                         drawDustLine(level, last.position().add(0,1,0), target.position().add(0,1,0), 12);
                     last = target;
                 }
-                sp.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 60, 1, false, false));
+                sp.addEffect(new MobEffectInstance(MobEffects.SPEED, 60, 1, false, false));
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.PLAYERS, 0.8f, 1.3f);
             }
@@ -235,8 +232,7 @@ public class AbilityLogicHandler {
         Vec3 pos = sp.position();
         getNearby(level, sp, 4.0).forEach(e -> {
             e.hurt(level.damageSources().playerAttack(sp), dmg);
-            // SLOWNESS was renamed to MOVEMENT_SLOWDOWN in 1.21.x
-            e.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 2, false, false));
+            e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, false, false));
             if (!finalBurst) e.igniteForSeconds(1);
         });
         level.playSound(null, pos.x, pos.y, pos.z,
