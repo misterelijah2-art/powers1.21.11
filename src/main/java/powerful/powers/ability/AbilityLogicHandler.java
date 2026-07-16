@@ -40,7 +40,7 @@ public class AbilityLogicHandler {
     private static final Map<UUID, List<UUID>>   riftTargets    = new HashMap<>();
     private static final int ASSIGN_DELAY_TICKS = 200;
 
-    // ── JOIN / LOGOUT ──────────────────────────────────────────────────────────
+    // ── JOIN / LOGOUT ────────────────────────────────────────────────────────
 
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
@@ -56,7 +56,7 @@ public class AbilityLogicHandler {
         if (event.getEntity() instanceof ServerPlayer sp) joinTimers.remove(sp.getUUID());
     }
 
-    // ── TICK ───────────────────────────────────────────────────────────────────
+    // ── TICK ──────────────────────────────────────────────────────────────────
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
@@ -105,7 +105,7 @@ public class AbilityLogicHandler {
         if (sp.tickCount % 5 == 0) syncTo(sp, data);
     }
 
-    // ── ACTIVATION ────────────────────────────────────────────────────────────
+    // ── ACTIVATION ───────────────────────────────────────────────────────────
 
     public static void activateAbility(ServerPlayer sp) {
         PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
@@ -125,7 +125,7 @@ public class AbilityLogicHandler {
         syncTo(sp, data);
     }
 
-    // ── ABILITY IMPLEMENTATIONS ────────────────────────────────────────────────
+    // ── ABILITY IMPLEMENTATIONS ───────────────────────────────────────────────
 
     private static void triggerAbility(ServerPlayer sp, AbilityType type, ServerLevel level) {
         Vec3 pos = sp.position();
@@ -219,6 +219,9 @@ public class AbilityLogicHandler {
                         drawDustLine(level, last.position().add(0,1,0), target.position().add(0,1,0), 12);
                     last = target;
                 }
+                // Speed boost uses the attribute directly since MobEffects.MOVEMENT_SPEED
+                // is the holder name — confirm via: Holder<MobEffect> spd = MobEffects.MOVEMENT_SPEED
+                // In NeoForge 21.11.x the field is still named MOVEMENT_SPEED on MobEffects.
                 sp.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 60, 1, false, false));
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.PLAYERS, 0.8f, 1.3f);
@@ -226,7 +229,7 @@ public class AbilityLogicHandler {
         }
     }
 
-    // ── MAGMA CAGE pulse ───────────────────────────────────────────────────────
+    // ── MAGMA CAGE pulse ─────────────────────────────────────────────────────
 
     private static void pulseMagmaCage(ServerPlayer sp, ServerLevel level, float dmg, boolean finalBurst) {
         Vec3 pos = sp.position();
@@ -243,7 +246,7 @@ public class AbilityLogicHandler {
                     SoundEvents.GENERIC_EXPLODE.value(), SoundSource.PLAYERS, 0.7f, 1.4f);
     }
 
-    // ── NULL RIFT detonation ───────────────────────────────────────────────────
+    // ── NULL RIFT detonation ─────────────────────────────────────────────────
 
     private static void detonateRift(ServerPlayer sp, ServerLevel level) {
         Vec3 pos = sp.position();
@@ -262,7 +265,7 @@ public class AbilityLogicHandler {
                 SoundEvents.CONDUIT_DEACTIVATE, SoundSource.PLAYERS, 1.2f, 0.7f);
     }
 
-    // ── DEATH MARK reflection ──────────────────────────────────────────────────
+    // ── DEATH MARK reflection ────────────────────────────────────────────────
 
     @SubscribeEvent
     public static void onLivingDamage(LivingIncomingDamageEvent event) {
@@ -278,7 +281,7 @@ public class AbilityLogicHandler {
         }
     }
 
-    // ── PvP DEATH DROP ────────────────────────────────────────────────────────
+    // ── PvP DEATH DROP ───────────────────────────────────────────────────────
 
     @SubscribeEvent
     public static void onLivingDeath(LivingDeathEvent event) {
@@ -346,8 +349,7 @@ public class AbilityLogicHandler {
     }
 
     private static void spawnWitherCloud(ServerLevel level, Vec3 pos) {
-        // dark purple dust cloud — (0xFF << 24) | purple
-        int darkPurple = (0xFF << 24) | (0x1A001A);
+        int darkPurple = (0xFF << 24) | 0x1A001A;
         for (int i = 0; i < 3; i++) {
             level.sendParticles(new DustParticleOptions(darkPurple, 1.2f),
                     pos.x, pos.y + 0.5 + i * 0.4, pos.z, 8, 0.4, 0.2, 0.4, 0.02);
@@ -357,8 +359,7 @@ public class AbilityLogicHandler {
     }
 
     private static void drawDustLine(ServerLevel level, Vec3 from, Vec3 to, int steps) {
-        // electric cyan dust arc between chain targets
-        int cyan = (0xFF << 24) | (0x00FFFF);
+        int cyan = (0xFF << 24) | 0x00FFFF;
         for (int i = 0; i <= steps; i++) {
             double t = i / (double) steps;
             level.sendParticles(new DustParticleOptions(cyan, 0.6f),

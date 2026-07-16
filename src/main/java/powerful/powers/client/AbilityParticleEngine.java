@@ -5,9 +5,10 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.particles.DustColorTransitionOptions;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ShriekParticleOption;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.tick.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import powerful.powers.ability.AbilityType;
 import powerful.powers.powers;
 
@@ -18,19 +19,15 @@ import java.util.Random;
 /**
  * Client-side multi-frame particle engine.
  *
- * DustParticleOptions in MC 1.21.11 takes (int argbColor, float size).
- * Pack colour with: (0xFF << 24) | (r << 16) | (g << 8) | b
- * DustColorTransitionOptions takes (int fromArgb, int toArgb, float size).
+ * ClientTickEvent lives in net.neoforged.neoforge.client.event (not event.tick).
+ * Dist.CLIENT ensures this class is stripped on the dedicated server so
+ * ClientLevel / Minecraft refs don't crash.
  *
- * EventBusSubscriber without a bus value defaults to the MOD bus.
- * For the GAME bus (forge events like ClientTickEvent) we must use
- * NeoForge.EVENT_BUS.register() at runtime, OR use the value attribute.
- * In NeoForge 21.11 the correct annotation form is:
- *   @EventBusSubscriber(modid = ..., value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
- * BUT Bus enum was removed — the default (no bus param) IS the game bus.
- * So: no bus param = game bus. MOD bus requires Bus.MOD explicitly.
+ * DustParticleOptions(int argbColor, float size) — colour packed as:
+ *   (0xFF << 24) | (r8 << 16) | (g8 << 8) | b8
+ * DustColorTransitionOptions(int fromArgb, int toArgb, float size)
  */
-@EventBusSubscriber(modid = powers.MODID)
+@EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT)
 public class AbilityParticleEngine {
 
     private record Burst(AbilityType type, double x, double y, double z, int ticksLeft) {}
@@ -38,7 +35,7 @@ public class AbilityParticleEngine {
     private static final Queue<Burst> QUEUE = new ArrayDeque<>();
     private static final Random RNG = new Random();
 
-    // Helpers: pack float RGB (0-1) into ARGB int
+    /** Pack float RGB (0-1) components into an ARGB int. */
     private static int rgb(float r, float g, float b) {
         return (0xFF << 24) | ((int)(r * 255) << 16) | ((int)(g * 255) << 8) | (int)(b * 255);
     }
@@ -86,16 +83,15 @@ public class AbilityParticleEngine {
         }
     }
 
-    // ── NULL RIFT ──────────────────────────────────────────────────────────────
+    // ── NULL RIFT ────────────────────────────────────────────────────────────
     private static void tickNullRift(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
         boolean imploding = frame > 20;
         double radius = imploding ? (frame / 40.0) * 4.0 : ((20 - frame) / 20.0) * 5.0;
         int count = imploding ? 6 : 10;
 
-        // bright violet -> near black
         int voidFrom = rgb(0.48f, 0f, 1f);
-        int voidTo   = rgb(0.1f,  0f, 0.1f);
+        int voidTo   = rgb(0.1f, 0f, 0.1f);
         DustColorTransitionOptions voidDust = new DustColorTransitionOptions(voidFrom, voidTo, imploding ? 1.2f : 1.8f);
         DustParticleOptions rimDust = new DustParticleOptions(rgb(0.55f, 0f, 0.9f), 0.8f);
 
@@ -113,12 +109,11 @@ public class AbilityParticleEngine {
         }
     }
 
-    // ── MAGMA CAGE ─────────────────────────────────────────────────────────────
+    // ── MAGMA CAGE ───────────────────────────────────────────────────────────
     private static void tickMagmaCage(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
         double pulse = 2.5 + Math.sin(frame * 0.25) * 1.0;
 
-        // molten orange -> hot yellow
         int magmaFrom = rgb(1f, 0.42f, 0f);
         int magmaTo   = rgb(1f, 0.84f, 0f);
         DustColorTransitionOptions magma = new DustColorTransitionOptions(magmaFrom, magmaTo, 1.5f);
@@ -146,11 +141,10 @@ public class AbilityParticleEngine {
         }
     }
 
-    // ── DEATH MARK ─────────────────────────────────────────────────────────────
+    // ── DEATH MARK ───────────────────────────────────────────────────────────
     private static void tickDeathMark(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
 
-        // poison green -> bile yellow-green
         int toxFrom = rgb(0f, 1f, 0.27f);
         int toxTo   = rgb(0.67f, 1f, 0f);
         DustColorTransitionOptions toxin = new DustColorTransitionOptions(toxFrom, toxTo, 1.3f);
@@ -176,11 +170,10 @@ public class AbilityParticleEngine {
         }
     }
 
-    // ── SHADOW STRIKE ──────────────────────────────────────────────────────────
+    // ── SHADOW STRIKE ────────────────────────────────────────────────────────
     private static void tickShadowStrike(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
 
-        // silver-blue -> midnight blue
         int bladeFrom = rgb(0.75f, 0.75f, 1f);
         int bladeTo   = rgb(0f, 0f, 0.4f);
         DustColorTransitionOptions blade = new DustColorTransitionOptions(bladeFrom, bladeTo, 0.9f);
@@ -204,11 +197,10 @@ public class AbilityParticleEngine {
         }
     }
 
-    // ── STORM CHAIN ────────────────────────────────────────────────────────────
+    // ── STORM CHAIN ──────────────────────────────────────────────────────────
     private static void tickStormChain(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
 
-        // electric cyan -> white
         int arcFrom = rgb(0f, 1f, 1f);
         int arcTo   = rgb(1f, 1f, 1f);
         DustColorTransitionOptions arc = new DustColorTransitionOptions(arcFrom, arcTo, 1.0f);
