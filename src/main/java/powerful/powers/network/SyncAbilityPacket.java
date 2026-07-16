@@ -1,46 +1,41 @@
 package powerful.powers.network;
 
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.Identifier;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import powerful.powers.client.ClientAbilityData;
-import powerful.powers.powers;
+import net.minecraft.resources.ResourceLocation;
+import powerful.powers.ability.AbilityType;
 
 /**
- * Server -> Client: sync ability + cooldown + charge + hudUnlocked for HUD.
+ * Server -> Client: tells the client what ability they have,
+ * current cooldown, and whether the announcement has been shown.
  */
 public record SyncAbilityPacket(
-        String abilityName,
-        int cooldownRemaining,
-        int cooldownMax,
-        boolean isCharging,
-        int chargeTicks,
-        boolean hudUnlocked
+        String abilityName,  // AbilityType.name() or "" for none
+        int cooldownTicks,
+        boolean announced
 ) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<SyncAbilityPacket> TYPE =
-            new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(powers.MODID, "sync_ability"));
+            new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath("powers", "sync_ability"));
 
-    public static final StreamCodec<ByteBuf, SyncAbilityPacket> STREAM_CODEC =
+    public static final StreamCodec<FriendlyByteBuf, SyncAbilityPacket> CODEC =
             StreamCodec.composite(
-                ByteBufCodecs.STRING_UTF8, SyncAbilityPacket::abilityName,
-                ByteBufCodecs.INT,         SyncAbilityPacket::cooldownRemaining,
-                ByteBufCodecs.INT,         SyncAbilityPacket::cooldownMax,
-                ByteBufCodecs.BOOL,        SyncAbilityPacket::isCharging,
-                ByteBufCodecs.INT,         SyncAbilityPacket::chargeTicks,
-                ByteBufCodecs.BOOL,        SyncAbilityPacket::hudUnlocked,
-                SyncAbilityPacket::new
+                    net.minecraft.network.codec.ByteBufCodecs.STRING_UTF8, SyncAbilityPacket::abilityName,
+                    net.minecraft.network.codec.ByteBufCodecs.INT,        SyncAbilityPacket::cooldownTicks,
+                    net.minecraft.network.codec.ByteBufCodecs.BOOL,       SyncAbilityPacket::announced,
+                    SyncAbilityPacket::new
             );
 
     @Override
-    public CustomPacketPayload.Type<SyncAbilityPacket> type() { return TYPE; }
+    public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 
-    public static class Handler {
-        public static void handle(SyncAbilityPacket packet, IPayloadContext ctx) {
-            ctx.enqueueWork(() -> ClientAbilityData.update(packet));
-        }
+    /** Convenience: resolve the type safely, returns null for empty string. */
+    public AbilityType resolveType() {
+        if (abilityName == null || abilityName.isEmpty()) return null;
+        try { return AbilityType.valueOf(abilityName); }
+        catch (IllegalArgumentException e) { return null; }
     }
 }
