@@ -1,15 +1,5 @@
 {
-  "itemGroup.powers": "Powers",
-  "item.powers.ability_orb": "Power Orb",
-
+  "item.powers.ability_orb": "Ability Orb",
   "key.powers.use_ability": "Use Ability",
-  "key.categories.powers": "Powers",
-
-  "powers.configuration.title": "Powers Configs",
-  "powers.configuration.section.powers.common.toml": "Powers Configs",
-  "powers.configuration.section.powers.common.toml.title": "Powers Configs",
-  "powers.configuration.items": "Item List",
-  "powers.configuration.logDirtBlock": "Log Dirt Block",
-  "powers.configuration.magicNumberIntroduction": "Magic Number Text",
-  "powers.configuration.magicNumber": "Magic Number"
+  "key.categories.powers": "Powers Mod"
 }
