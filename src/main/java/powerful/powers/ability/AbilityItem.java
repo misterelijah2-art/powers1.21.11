@@ -20,8 +20,12 @@ public class AbilityItem extends Item {
 
     private static final String NBT_ABILITY = "AbilityType";
 
+    // Fix: do NOT call any extra methods on props here — the registry
+    // already provides a fully-configured Item.Properties. Calling
+    // props.stacksTo(1) again (or any descriptor method) before the
+    // registry ID is bound causes the "Item id not set" NPE on 1.21.1+.
     public AbilityItem(Properties props) {
-        super(props.stacksTo(1));
+        super(props);
     }
 
     /** Create a stack encoding the given ability type. */
@@ -40,7 +44,8 @@ public class AbilityItem extends Item {
         if (custom == null) return null;
         CompoundTag tag = custom.copyTag();
         if (!tag.contains(NBT_ABILITY)) return null;
-        try { return AbilityType.valueOf(tag.getString(NBT_ABILITY).orElse("")); }
+        // Fix: CompoundTag.getString() returns String directly in 1.21.1+, not Optional.
+        try { return AbilityType.valueOf(tag.getString(NBT_ABILITY)); }
         catch (IllegalArgumentException e) { return null; }
     }
 
