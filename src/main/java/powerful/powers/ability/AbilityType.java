@@ -1,46 +1,67 @@
 package powerful.powers.ability;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.Style;
+import net.minecraft.ChatFormatting;
 
-/**
- * Five combat-focused abilities with custom visual identities.
- * Cooldown / duration in ticks (20 ticks = 1 second).
- *
- *  NULL RIFT     – void implosion that sucks + detonates enemies         (dark purple)
- *  MAGMA CAGE    – pulsing molten ring that repeatedly burns nearby foes (deep orange)
- *  DEATH MARK    – curses enemies so their own damage reflects back      (sickly green)
- *  SHADOW STRIKE – blink THROUGH a target, shredding them on exit        (silver/white)
- *  STORM CHAIN   – arcing electricity that jumps between up to 4 targets (electric cyan)
- */
 public enum AbilityType {
 
-    NULL_RIFT    ("Null Rift",     ChatFormatting.DARK_PURPLE, 220, 80),
-    MAGMA_CAGE   ("Magma Cage",    ChatFormatting.GOLD,        300, 100),
-    DEATH_MARK   ("Death Mark",    ChatFormatting.DARK_GREEN,  360, 120),
-    SHADOW_STRIKE("Shadow Strike", ChatFormatting.WHITE,       180,  30),
-    STORM_CHAIN  ("Storm Chain",   ChatFormatting.AQUA,        280,  60);
+    VOIDSTEP(
+        "Voidstep",
+        ChatFormatting.DARK_PURPLE,
+        "\u00a75✴",
+        200,  // 10s cooldown
+        60    // 3s charge for full
+    ),
+    SOULFLARE(
+        "Soulflare",
+        ChatFormatting.GOLD,
+        "\u00a76\u2764",
+        180,
+        80
+    ),
+    GLACIAL_PULSE(
+        "Glacial Pulse",
+        ChatFormatting.AQUA,
+        "\u00a7b\u2745",
+        220,
+        100
+    ),
+    WRAITH_SHROUD(
+        "Wraith Shroud",
+        ChatFormatting.WHITE,
+        "\u00a7f\u2736",
+        240,
+        70
+    ),
+    THUNDER_CRASH(
+        "Thunder Crash",
+        ChatFormatting.YELLOW,
+        "\u00a7e\u26a1",
+        200,
+        90
+    );
 
-    private final String displayName;
-    private final ChatFormatting color;
-    private final int cooldownTicks;
-    private final int durationTicks;
+    public final String displayName;
+    public final ChatFormatting color;
+    public final String icon;
+    public final int cooldownTicks;   // full cooldown in ticks
+    public final int chargeMaxTicks;  // ticks to hold for full charge
 
-    AbilityType(String displayName, ChatFormatting color, int cooldownTicks, int durationTicks) {
-        this.displayName   = displayName;
-        this.color         = color;
+    AbilityType(String displayName, ChatFormatting color, String icon,
+                int cooldownTicks, int chargeMaxTicks) {
+        this.displayName = displayName;
+        this.color = color;
+        this.icon = icon;
         this.cooldownTicks = cooldownTicks;
-        this.durationTicks = durationTicks;
+        this.chargeMaxTicks = chargeMaxTicks;
     }
 
-    public String getDisplayName()   { return displayName; }
-    public ChatFormatting getColor() { return color; }
-    public int getCooldownTicks()    { return cooldownTicks; }
-    public int getDurationTicks()    { return durationTicks; }
+    public Component getDisplayComponent() {
+        return Component.literal(displayName).withStyle(color);
+    }
 
-    public Component getTitle() {
-        return Component.literal(displayName)
-                .withStyle(Style.EMPTY.withColor(color).withBold(true));
+    public static AbilityType random() {
+        AbilityType[] values = values();
+        return values[(int)(Math.random() * values.length)];
     }
 }
