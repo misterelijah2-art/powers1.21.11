@@ -1,6 +1,5 @@
 package powerful.powers.client;
 
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -12,16 +11,11 @@ import powerful.powers.ability.AbilityType;
 import powerful.powers.powers;
 
 /**
- * Renders the ability HUD in the bottom-right corner.
- *
- * Layout:
- *   [Ability Name]      <- colored name label
- *   [■■■■■□□□□□]       <- cooldown bar (fills left-to-right as cooldown expires)
- *   READY / Xs          <- status text
- *
- * Also drives the title reveal animation.
+ * Renders the ability HUD (bottom-right) and drives the title reveal.
+ * NeoForge 21.11: RenderGuiEvent.Post.getPartialTick() returns DeltaTracker —
+ * we call event.getPartialTick().getGameTimeDeltaPartialTick(false) for the float.
  */
-@EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(modid = powers.MODID, value = Dist.CLIENT)
 public class AbilityHudRenderer {
 
     @SubscribeEvent
@@ -29,9 +23,10 @@ public class AbilityHudRenderer {
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.hideGui || mc.player == null) return;
 
-        // Tick and render the title reveal
+        float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
+
         AbilityTitleRenderer.tick();
-        AbilityTitleRenderer.render(event.getGuiGraphics(), event.getPartialTick());
+        AbilityTitleRenderer.render(event.getGuiGraphics(), partialTick);
 
         if (!ClientAbilityData.hasAbility()) return;
 
@@ -41,61 +36,45 @@ public class AbilityHudRenderer {
         int sh = mc.getWindow().getGuiScaledHeight();
 
         AbilityType ability = ClientAbilityData.getCurrentAbility();
-        float fraction = ClientAbilityData.getCooldownFraction(); // 0 = ready, 1 = just used
+        float fraction = ClientAbilityData.getCooldownFraction();
 
-        // Position: bottom-right, 8px from edge
         int barWidth = 80;
         int barHeight = 6;
-        int padX = 8;
-        int padY = 10;
-        int baseX = sw - barWidth - padX - 2;
-        int baseY = sh - padY - barHeight - font.lineHeight * 2 - 6;
+        int baseX = sw - barWidth - 10;
+        int baseY = sh - font.lineHeight * 2 - barHeight - 14;
 
-        // --- Background panel ---
-        gfx.fill(baseX - 4, baseY - 4,
-                  baseX + barWidth + 4, baseY + barHeight + font.lineHeight * 2 + 10,
-                  0x88000000);
+        // Background panel
+        gfx.fill(baseX - 4, baseY - 4, baseX + barWidth + 4, baseY + barHeight + font.lineHeight * 2 + 10, 0x88000000);
 
-        // --- Ability name ---
+        // Ability name
         int nameColor = ability.getColor().getColor() != null
                 ? (0xFF000000 | ability.getColor().getColor()) : 0xFFFFFFFF;
         gfx.drawString(font, ability.getDisplayName(), baseX, baseY, nameColor, true);
 
-        // --- Cooldown bar background (dark) ---
+        // Cooldown bar
         int barY = baseY + font.lineHeight + 3;
         gfx.fill(baseX, barY, baseX + barWidth, barY + barHeight, 0xFF333333);
 
-        // --- Cooldown bar fill (color based on readiness) ---
-        float readyFraction = 1f - fraction; // how much is filled = how ready
-        int fillWidth = (int)(readyFraction * barWidth);
-        int barColor = fraction <= 0f ? 0xFF44FF44 // green = ready
-                     : fraction < 0.5f ? 0xFFFFAA00 // orange = half
-                     : 0xFFFF3333; // red = mostly on cooldown
+        int fillWidth = (int)((1f - fraction) * barWidth);
+        int barColor = fraction <= 0f ? 0xFF44FF44 : fraction < 0.5f ? 0xFFFFAA00 : 0xFFFF3333;
         if (fillWidth > 0) {
             gfx.fill(baseX, barY, baseX + fillWidth, barY + barHeight, barColor);
         }
 
-        // --- Bar border ---
+        // Bar border
         gfx.hLine(baseX, baseX + barWidth - 1, barY, 0xFF888888);
         gfx.hLine(baseX, baseX + barWidth - 1, barY + barHeight - 1, 0xFF888888);
         gfx.vLine(baseX, barY, barY + barHeight, 0xFF888888);
         gfx.vLine(baseX + barWidth - 1, barY, barY + barHeight, 0xFF888888);
 
-        // --- Status text ---
+        // Status text
         int statusY = barY + barHeight + 3;
-        String statusText;
-        int statusColor;
-        if (!ClientAbilityData.isOnCooldown()) {
-            statusText  = "READY";
-            statusColor = 0xFF44FF44;
-        } else {
-            int secsLeft = (int)Math.ceil(ClientAbilityData.getCooldownRemaining() / 20.0);
-            statusText  = secsLeft + "s";
-            statusColor = 0xFFAAAAAA;
-        }
+        String statusText  = ClientAbilityData.isOnCooldown()
+            ? (int)Math.ceil(ClientAbilityData.getCooldownRemaining() / 20.0) + "s"
+            : "READY";
+        int statusColor = ClientAbilityData.isOnCooldown() ? 0xFFAAAAAA : 0xFF44FF44;
         gfx.drawString(font, statusText, baseX, statusY, statusColor, false);
 
-        // Keybind hint
         String hint = "[R]";
         gfx.drawString(font, hint, baseX + barWidth - font.width(hint), statusY, 0xFF666666, false);
     }

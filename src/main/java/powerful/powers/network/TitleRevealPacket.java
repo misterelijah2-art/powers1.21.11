@@ -10,7 +10,7 @@ import powerful.powers.client.AbilityTitleRenderer;
 import powerful.powers.powers;
 
 /**
- * Sent server -> client to trigger the dramatic ability reveal animation.
+ * Server -> Client: trigger the dramatic ability reveal animation.
  */
 public record TitleRevealPacket(String abilityName) implements CustomPacketPayload {
 
@@ -19,8 +19,8 @@ public record TitleRevealPacket(String abilityName) implements CustomPacketPaylo
 
     public static final StreamCodec<ByteBuf, TitleRevealPacket> STREAM_CODEC =
             StreamCodec.composite(
-                    ByteBufCodecs.STRING_UTF8, TitleRevealPacket::abilityName,
-                    TitleRevealPacket::new
+                ByteBufCodecs.STRING_UTF8, TitleRevealPacket::abilityName,
+                TitleRevealPacket::new
             );
 
     @Override

@@ -1,30 +1,29 @@
 package powerful.powers.ability;
 
+import com.mojang.serialization.Codec;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
-import net.minecraft.nbt.CompoundTag;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.bus.api.IEventBus;
-import java.util.function.Supplier;
 import powerful.powers.powers;
 
 /**
- * Registers the AttachmentType that stores PlayerAbilityData on each ServerPlayer.
+ * Registers the AttachmentType for PlayerAbilityData.
+ * Uses a manual Codec-based serializer compatible with NeoForge 21.11.
  */
 public class AbilityAttachment {
 
     public static final DeferredRegister<AttachmentType<?>> ATTACHMENT_TYPES =
             DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, powers.MODID);
 
-    public static final Supplier<AttachmentType<PlayerAbilityData>> ABILITY_DATA =
+    public static final java.util.function.Supplier<AttachmentType<PlayerAbilityData>> ABILITY_DATA =
             ATTACHMENT_TYPES.register("ability_data", () ->
-                    AttachmentType.builder(PlayerAbilityData::new)
-                            .serialize(
-                                    data -> data.save(),
-                                    (data, tag) -> data.load(tag)
-                            )
-                            .build()
+                AttachmentType.serializable(() -> new PlayerAbilityData(),
+                        net.minecraft.nbt.CompoundTag.CODEC.xmap(
+                            tag -> { PlayerAbilityData d = new PlayerAbilityData(); d.load(tag); return d; },
+                            PlayerAbilityData::save
+                        )
+                ).build()
             );
 
     public static void register(IEventBus bus) {

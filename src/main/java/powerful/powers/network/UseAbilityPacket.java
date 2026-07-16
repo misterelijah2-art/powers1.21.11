@@ -10,8 +10,7 @@ import powerful.powers.ability.AbilityLogicHandler;
 import powerful.powers.powers;
 
 /**
- * Sent client -> server when the player presses the ability keybind.
- * Carries no payload — server reads player state from the AttachmentType.
+ * Client -> Server: player pressed the ability keybind.
  */
 public record UseAbilityPacket() implements CustomPacketPayload {
 

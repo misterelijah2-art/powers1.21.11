@@ -3,31 +3,29 @@ package powerful.powers.ability;
 import net.minecraft.nbt.CompoundTag;
 
 /**
- * Stores per-player ability state: which ability, cooldown ticks remaining, and active duration remaining.
- * Serialized into player persistent data via AttachmentType.
+ * Stores per-player ability state.
+ * Uses orElse("") / orElse(0) because MC 1.21.11 CompoundTag.getString/getInt return Optional.
  */
 public class PlayerAbilityData {
 
-    private AbilityType ability    = null;
-    private int cooldownRemaining  = 0;   // ticks until ability can be used again
-    private int activeRemaining    = 0;   // ticks the ability effect is still running
+    private AbilityType ability   = null;
+    private int cooldownRemaining = 0;
+    private int activeRemaining   = 0;
 
-    // ---- Getters / Setters ----
+    public boolean hasAbility()              { return ability != null; }
+    public AbilityType getAbility()          { return ability; }
+    public void setAbility(AbilityType type) { this.ability = type; }
+    public void clearAbility()               { ability = null; cooldownRemaining = 0; activeRemaining = 0; }
 
-    public boolean hasAbility()               { return ability != null; }
-    public AbilityType getAbility()           { return ability; }
-    public void setAbility(AbilityType type)  { this.ability = type; }
-    public void clearAbility()                { this.ability = null; cooldownRemaining = 0; activeRemaining = 0; }
+    public int getCooldownRemaining()        { return cooldownRemaining; }
+    public void setCooldownRemaining(int v)  { this.cooldownRemaining = Math.max(0, v); }
+    public void tickCooldown()               { if (cooldownRemaining > 0) cooldownRemaining--; }
+    public boolean isOnCooldown()            { return cooldownRemaining > 0; }
 
-    public int getCooldownRemaining()         { return cooldownRemaining; }
-    public void setCooldownRemaining(int v)   { this.cooldownRemaining = Math.max(0, v); }
-    public void tickCooldown()                { if (cooldownRemaining > 0) cooldownRemaining--; }
-    public boolean isOnCooldown()             { return cooldownRemaining > 0; }
-
-    public int getActiveRemaining()           { return activeRemaining; }
-    public void setActiveRemaining(int v)     { this.activeRemaining = Math.max(0, v); }
-    public void tickActive()                  { if (activeRemaining > 0) activeRemaining--; }
-    public boolean isActive()                 { return activeRemaining > 0; }
+    public int getActiveRemaining()          { return activeRemaining; }
+    public void setActiveRemaining(int v)    { this.activeRemaining = Math.max(0, v); }
+    public void tickActive()                 { if (activeRemaining > 0) activeRemaining--; }
+    public boolean isActive()                { return activeRemaining > 0; }
 
     // ---- NBT Serialization ----
 
@@ -40,10 +38,11 @@ public class PlayerAbilityData {
     }
 
     public void load(CompoundTag tag) {
-        String name = tag.getString("ability");
+        // In MC 1.21.11, CompoundTag.getString/getInt return Optional
+        String name = tag.getString("ability").orElse("");
         ability = name.isEmpty() ? null : safeValueOf(name);
-        cooldownRemaining = tag.getInt("cooldown");
-        activeRemaining   = tag.getInt("active");
+        cooldownRemaining = tag.getInt("cooldown").orElse(0);
+        activeRemaining   = tag.getInt("active").orElse(0);
     }
 
     private static AbilityType safeValueOf(String name) {

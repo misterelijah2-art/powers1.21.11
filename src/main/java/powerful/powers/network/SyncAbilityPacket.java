@@ -10,8 +10,7 @@ import powerful.powers.client.ClientAbilityData;
 import powerful.powers.powers;
 
 /**
- * Sent server -> client to keep the HUD cooldown bar in sync.
- * Contains: abilityName (or empty), cooldownRemaining, cooldownMax.
+ * Server -> Client: sync ability + cooldown for HUD.
  */
 public record SyncAbilityPacket(String abilityName, int cooldownRemaining, int cooldownMax)
         implements CustomPacketPayload {
@@ -21,10 +20,10 @@ public record SyncAbilityPacket(String abilityName, int cooldownRemaining, int c
 
     public static final StreamCodec<ByteBuf, SyncAbilityPacket> STREAM_CODEC =
             StreamCodec.composite(
-                    ByteBufCodecs.STRING_UTF8, SyncAbilityPacket::abilityName,
-                    ByteBufCodecs.INT,         SyncAbilityPacket::cooldownRemaining,
-                    ByteBufCodecs.INT,         SyncAbilityPacket::cooldownMax,
-                    SyncAbilityPacket::new
+                ByteBufCodecs.STRING_UTF8, SyncAbilityPacket::abilityName,
+                ByteBufCodecs.INT,         SyncAbilityPacket::cooldownRemaining,
+                ByteBufCodecs.INT,         SyncAbilityPacket::cooldownMax,
+                SyncAbilityPacket::new
             );
 
     @Override
