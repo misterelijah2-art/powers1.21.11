@@ -1,19 +1,19 @@
 package powerful.powers.network;
 
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Client -> Server: player pressed or released ability keybind.
- * pressed=true  -> start charging
- * pressed=false -> release / fire
- * chargeTicks   -> how many ticks the key was held (client counted)
+ * Client -> Server: player pressed the ability keybind.
+ * charge=true means hold-start, charge=false means release.
+ * holdTicks is the number of ticks held (-1 for instant tap).
  */
 public record UseAbilityPacket(
-        boolean pressed,
-        int chargeTicks
+        boolean charge,
+        int     holdTicks
 ) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<UseAbilityPacket> TYPE =
@@ -21,12 +21,10 @@ public record UseAbilityPacket(
 
     public static final StreamCodec<FriendlyByteBuf, UseAbilityPacket> STREAM_CODEC =
             StreamCodec.composite(
-                    net.minecraft.network.codec.ByteBufCodecs.BOOL, UseAbilityPacket::pressed,
-                    net.minecraft.network.codec.ByteBufCodecs.INT,  UseAbilityPacket::chargeTicks,
-                    UseAbilityPacket::new);
-
-    // Legacy alias
-    public static final StreamCodec<FriendlyByteBuf, UseAbilityPacket> CODEC = STREAM_CODEC;
+                    ByteBufCodecs.BOOL, UseAbilityPacket::charge,
+                    ByteBufCodecs.INT,  UseAbilityPacket::holdTicks,
+                    UseAbilityPacket::new
+            );
 
     @Override
     public CustomPacketPayload.Type<? extends CustomPacketPayload> type() { return TYPE; }

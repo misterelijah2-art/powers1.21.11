@@ -1,89 +1,107 @@
 package powerful.powers.client;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.particle.ParticleEngine;
-import net.minecraft.core.particles.*;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.particles.ParticleTypes;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import powerful.powers.ability.AbilityType;
 import powerful.powers.powers;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
 /**
- * Spawns client-side passive aura particles around the local player.
- * Each ability has a distinct visual signature.
+ * Client-side particle bursts triggered by AbilityFxPacket.
+ * Runs completely on the render thread.
  */
 @EventBusSubscriber(modid = powers.MODID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public class AbilityParticleEngine {
 
+    private record Burst(AbilityType type, double x, double y, double z, int life, int max) {}
+
+    private static final List<Burst> active = new ArrayList<>();
+
+    public static void addBurst(AbilityType type, double x, double y, double z) {
+        int maxLife = switch (type) {
+            case VOIDSTEP      -> 40;
+            case SOULFLARE     -> 60;
+            case GLACIAL_PULSE -> 50;
+            case WRAITH_SHROUD -> 20;
+            case THUNDER_CRASH -> 35;
+        };
+        active.add(new Burst(type, x, y, z, 0, maxLife));
+    }
+
     @SubscribeEvent
-    public static void onClientTick(LevelTickEvent.Post event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null) return;
-        if (!ClientAbilityData.hasAbility() || !ClientAbilityData.hudUnlocked) return;
-        if (ClientTitleRevealState.isRevealActive()) return;
+    public static void onClientTick(ClientTickEvent.Post event) {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (!(mc.level instanceof ClientLevel level)) return;
 
-        Player player = mc.player;
-        ClientLevel level = mc.level;
-        AbilityType type = ClientAbilityData.ability;
-        int tick = (int)(mc.level.getGameTime() & Integer.MAX_VALUE);
-        int interval = intervalFor(type);
+        Iterator<Burst> it = active.iterator();
+        List<Burst> next = new ArrayList<>();
+        while (it.hasNext()) {
+            Burst b = it.next();
+            if (b.life() >= b.max()) { it.remove(); continue; }
+            tickBurst(b, level);
+            next.add(new Burst(b.type(), b.x(), b.y(), b.z(), b.life() + 1, b.max()));
+        }
+        active.clear();
+        active.addAll(next);
+    }
 
-        if (tick % interval != 0) return;
-
-        double x = player.getX();
-        double y = player.getY() + 1.0;
-        double z = player.getZ();
-        double angle = tick * 0.2;
-        double r = 0.6;
-        double ox = Math.cos(angle) * r;
-        double oz = Math.sin(angle) * r;
-
-        switch (type) {
-            case VOIDSTEP -> {
-                level.addParticle(ParticleTypes.PORTAL,
-                        x + ox, y, z + oz, 0, 0.05, 0);
-                level.addParticle(ParticleTypes.PORTAL,
-                        x - ox, y, z - oz, 0, 0.05, 0);
-            }
-            case SOULFLARE -> {
-                level.addParticle(ParticleTypes.FLAME,
-                        x + ox * 0.5, y - 0.2, z + oz * 0.5, 0, 0.03, 0);
-                level.addParticle(ParticleTypes.SOUL_FIRE_FLAME,
-                        x + ox * 0.3, y + 0.3, z + oz * 0.3, 0, 0.02, 0);
-            }
-            case GLACIAL_PULSE -> {
-                for (int i = 0; i < 3; i++) {
-                    double a2 = angle + i * (Math.PI * 2 / 3);
-                    level.addParticle(ParticleTypes.SNOWFLAKE,
-                            x + Math.cos(a2) * r, y - 0.3, z + Math.sin(a2) * r,
-                            0, 0.01, 0);
-                }
-            }
-            case WRAITH_SHROUD -> {
-                level.addParticle(ParticleTypes.CLOUD,
-                        x + ox * 0.4, y + 0.5, z + oz * 0.4,
-                        0, 0.01, 0);
-                level.addParticle(ParticleTypes.WITCH,
-                        x + ox, y + 0.8, z + oz, 0, 0.02, 0);
-            }
-            case THUNDER_CRASH -> {
-                level.addParticle(ParticleTypes.ELECTRIC_SPARK,
-                        x + ox, y + 0.4, z + oz, 0, 0.05, 0);
-            }
+    private static void tickBurst(Burst b, ClientLevel level) {
+        switch (b.type()) {
+            case VOIDSTEP      -> tickVoidstep(b, level);
+            case SOULFLARE     -> tickSoulflare(b, level);
+            case GLACIAL_PULSE -> tickGlacialPulse(b, level);
+            case WRAITH_SHROUD -> tickWraithShroud(b, level);
+            case THUNDER_CRASH -> tickThunderCrash(b, level);
         }
     }
 
-    private static int intervalFor(AbilityType type) {
-        return switch (type) {
-            case VOIDSTEP      -> 3;
-            case SOULFLARE     -> 2;
-            case GLACIAL_PULSE -> 4;
-            case WRAITH_SHROUD -> 3;
-            case THUNDER_CRASH -> 2;
-        };
+    private static void tickVoidstep(Burst b, ClientLevel level) {
+        if (b.life() % 2 != 0) return;
+        double angle = b.life() * 30.0 * Math.PI / 180.0;
+        for (int i = 0; i < 6; i++) {
+            double a = angle + i * Math.PI / 3;
+            double r = 1.0 + b.life() * 0.12;
+            level.addParticle(ParticleTypes.PORTAL,
+                    b.x() + Math.cos(a)*r, b.y() + 0.5, b.z() + Math.sin(a)*r,
+                    0, 0.05, 0);
+        }
+    }
+
+    private static void tickSoulflare(Burst b, ClientLevel level) {
+        level.addParticle(ParticleTypes.FLAME,
+                b.x() + (Math.random()-0.5)*1.5, b.y() + Math.random()*2, b.z() + (Math.random()-0.5)*1.5,
+                0, 0.08, 0);
+        if (b.life() % 3 == 0)
+            level.addParticle(ParticleTypes.LAVA, b.x(), b.y()+1, b.z(), 0, 0, 0);
+    }
+
+    private static void tickGlacialPulse(Burst b, ClientLevel level) {
+        if (b.life() % 2 != 0) return;
+        double r = b.life() * 0.25;
+        for (int i = 0; i < 8; i++) {
+            double a = i * Math.PI / 4;
+            level.addParticle(ParticleTypes.SNOWFLAKE,
+                    b.x() + Math.cos(a)*r, b.y() + 0.1, b.z() + Math.sin(a)*r,
+                    0, 0.03, 0);
+        }
+    }
+
+    private static void tickWraithShroud(Burst b, ClientLevel level) {
+        level.addParticle(ParticleTypes.CLOUD,
+                b.x() + (Math.random()-0.5)*2, b.y() + Math.random()*2, b.z() + (Math.random()-0.5)*2,
+                0, 0.05, 0);
+    }
+
+    private static void tickThunderCrash(Burst b, ClientLevel level) {
+        level.addParticle(ParticleTypes.ELECTRIC_SPARK,
+                b.x() + (Math.random()-0.5)*3, b.y() + Math.random(), b.z() + (Math.random()-0.5)*3,
+                (Math.random()-0.5)*0.3, Math.random()*0.3, (Math.random()-0.5)*0.3);
     }
 }

@@ -1,63 +1,59 @@
 package powerful.powers.event;
 
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
-import powerful.powers.ability.AbilityManager;
+import powerful.powers.ability.AbilityAttachment;
+import powerful.powers.ability.PlayerAbilityData;
+import powerful.powers.network.PacketHandler;
+import powerful.powers.network.SyncAbilityPacket;
+import powerful.powers.powers;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Handles:
- * - Player join: 10-second delayed ability assignment for new players.
- * - Server tick: drives AbilityManager ticks and the join countdown.
+ * Handles the initial 10-second join delay for ability assignment.
+ * The actual assignment is done in AbilityLogicHandler; this class
+ * only provides supplementary join-event handling if needed.
  */
+@EventBusSubscriber(modid = powers.MODID)
 public class PlayerJoinHandler {
 
-    // UUID -> game-time tick at which the ability should be assigned
-    private static final Map<UUID, Long> PENDING_ASSIGN = new ConcurrentHashMap<>();
     private static final int DELAY_TICKS = 200; // 10 seconds
+    private static final Map<UUID, Long> assignAt = new HashMap<>();
 
     @SubscribeEvent
-    public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+    public static void onJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer sp)) return;
-        AbilityManager.onPlayerJoin(sp);
-
-        // If onPlayerJoin found a saved ability, no need to schedule
-        if (AbilityManager.get(sp) == null) {
-            long assignAt = sp.serverLevel().getGameTime() + DELAY_TICKS;
-            PENDING_ASSIGN.put(sp.getUUID(), assignAt);
+        // Schedule assignment (AbilityLogicHandler also does this;
+        // here we just ensure sync of existing ability on reconnect)
+        PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
+        if (data.hasAbility()) {
+            // Re-sync existing ability to client on reconnect
+            PacketHandler.sendToPlayer(sp, new SyncAbilityPacket(
+                    data.getAbility().name(),
+                    data.getCooldownRemaining(),
+                    data.getAbility().getCooldownTicks(),
+                    false, 0,
+                    data.isHudUnlocked()));
         }
     }
 
     @SubscribeEvent
-    public static void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+    public static void onRespawn(PlayerEvent.PlayerRespawnEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer sp)) return;
-        PENDING_ASSIGN.remove(sp.getUUID());
-        AbilityManager.onPlayerLeave(sp);
-    }
-
-    @SubscribeEvent
-    public static void onServerTick(ServerTickEvent.Post event) {
-        // Tick ability manager for each level
-        for (net.minecraft.server.level.ServerLevel level :
-                event.getServer().getAllLevels()) {
-            AbilityManager.serverTick(level);
+        PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
+        if (data.hasAbility()) {
+            PacketHandler.sendToPlayer(sp, new SyncAbilityPacket(
+                    data.getAbility().name(),
+                    data.getCooldownRemaining(),
+                    data.getAbility().getCooldownTicks(),
+                    false, 0,
+                    data.isHudUnlocked()));
         }
-
-        // Process pending delayed assignments
-        if (PENDING_ASSIGN.isEmpty()) return;
-        long now = event.getServer().overworld().getGameTime();
-        PENDING_ASSIGN.entrySet().removeIf(entry -> {
-            if (now < entry.getValue()) return false;
-            ServerPlayer sp = event.getServer().getPlayerList()
-                    .getPlayer(entry.getKey());
-            if (sp == null) return true; // player left
-            AbilityManager.assignRandom(sp);
-            return true;
-        });
     }
 }
