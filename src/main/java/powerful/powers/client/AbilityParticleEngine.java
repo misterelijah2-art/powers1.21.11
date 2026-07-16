@@ -4,12 +4,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.particles.DustColorTransitionOptions;
 import net.minecraft.core.particles.DustParticleOptions;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.ShriekParticleOption;
-import net.neoforged.neoforge.event.tick.ClientTickEvent;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import org.joml.Vector3f;
+import net.neoforged.neoforge.event.tick.ClientTickEvent;
 import powerful.powers.ability.AbilityType;
 import powerful.powers.powers;
 
@@ -20,14 +18,19 @@ import java.util.Random;
 /**
  * Client-side multi-frame particle engine.
  *
- * When an AbilityFxPacket arrives, we "schedule" a burst descriptor.
- * Each client tick we drain up to N frames from the queue so the
- * animation plays out over several ticks instead of one giant spike.
+ * DustParticleOptions in MC 1.21.11 takes (int argbColor, float size).
+ * Pack colour with: (0xFF << 24) | (r << 16) | (g << 8) | b
+ * DustColorTransitionOptions takes (int fromArgb, int toArgb, float size).
  *
- * Uses ONLY custom-coloured DustParticleOptions and
- * DustColorTransitionOptions so visuals are unique, not vanilla.
+ * EventBusSubscriber without a bus value defaults to the MOD bus.
+ * For the GAME bus (forge events like ClientTickEvent) we must use
+ * NeoForge.EVENT_BUS.register() at runtime, OR use the value attribute.
+ * In NeoForge 21.11 the correct annotation form is:
+ *   @EventBusSubscriber(modid = ..., value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
+ * BUT Bus enum was removed — the default (no bus param) IS the game bus.
+ * So: no bus param = game bus. MOD bus requires Bus.MOD explicitly.
  */
-@EventBusSubscriber(modid = powers.MODID, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(modid = powers.MODID)
 public class AbilityParticleEngine {
 
     private record Burst(AbilityType type, double x, double y, double z, int ticksLeft) {}
@@ -35,7 +38,11 @@ public class AbilityParticleEngine {
     private static final Queue<Burst> QUEUE = new ArrayDeque<>();
     private static final Random RNG = new Random();
 
-    // Called from packet handler
+    // Helpers: pack float RGB (0-1) into ARGB int
+    private static int rgb(float r, float g, float b) {
+        return (0xFF << 24) | ((int)(r * 255) << 16) | ((int)(g * 255) << 8) | (int)(b * 255);
+    }
+
     public static void schedule(AbilityType type, double x, double y, double z) {
         int frames = switch (type) {
             case NULL_RIFT     -> 40;
@@ -53,14 +60,14 @@ public class AbilityParticleEngine {
         ClientLevel level = mc.level;
         if (level == null || QUEUE.isEmpty()) return;
 
-        // Process up to 3 active bursts per tick
-        int processed = 0;
         Queue<Burst> next = new ArrayDeque<>();
+        int processed = 0;
         for (Burst b : QUEUE) {
             if (processed < 3) {
                 tickBurst(b, level);
                 processed++;
-                if (b.ticksLeft() > 1) next.add(new Burst(b.type(), b.x(), b.y(), b.z(), b.ticksLeft() - 1));
+                if (b.ticksLeft() > 1)
+                    next.add(new Burst(b.type(), b.x(), b.y(), b.z(), b.ticksLeft() - 1));
             } else {
                 next.add(b);
             }
@@ -79,26 +86,18 @@ public class AbilityParticleEngine {
         }
     }
 
-    // ── NULL RIFT ─────────────────────────────────────────────────────────────
-    // Deep violet → black transition dust spiralling inward then exploding out.
+    // ── NULL RIFT ──────────────────────────────────────────────────────────────
     private static void tickNullRift(Burst b, ClientLevel level) {
-        int frame = b.ticksLeft(); // counts down from 40
-        float progress = frame / 40f;
-        // Implode phase (frames 40→20): particles spiral inward
-        // Explode phase (frames 20→0): particles blast outward
+        int frame = b.ticksLeft();
         boolean imploding = frame > 20;
-        double radius = imploding ? progress * 4.0 : (1f - progress) * 5.0;
+        double radius = imploding ? (frame / 40.0) * 4.0 : ((20 - frame) / 20.0) * 5.0;
         int count = imploding ? 6 : 10;
 
-        // deep violet #7B00FF → near-black #1A001A
-        DustColorTransitionOptions voidDust = new DustColorTransitionOptions(
-                new Vector3f(0.48f, 0f, 1f),       // from: bright violet
-                new Vector3f(0.1f, 0f, 0.1f),      // to:   near black
-                imploding ? 1.2f : 1.8f
-        );
-        // Rim: electric indigo
-        DustParticleOptions rimDust = new DustParticleOptions(
-                new Vector3f(0.55f, 0f, 0.9f), 0.8f);
+        // bright violet -> near black
+        int voidFrom = rgb(0.48f, 0f, 1f);
+        int voidTo   = rgb(0.1f,  0f, 0.1f);
+        DustColorTransitionOptions voidDust = new DustColorTransitionOptions(voidFrom, voidTo, imploding ? 1.2f : 1.8f);
+        DustParticleOptions rimDust = new DustParticleOptions(rgb(0.55f, 0f, 0.9f), 0.8f);
 
         for (int i = 0; i < count; i++) {
             double angle = (i / (double) count) * Math.PI * 2 + (frame * 0.15);
@@ -108,156 +107,118 @@ public class AbilityParticleEngine {
             level.addParticle(voidDust, px, py, pz, 0, 0, 0);
             if (i % 2 == 0) level.addParticle(rimDust, px, py + 0.3, pz, 0, 0.05, 0);
         }
-        // Core shriek ring on the explosion frame
         if (frame == 19) {
-            for (int i = 0; i < 6; i++) {
-                level.addParticle(new ShriekParticleOption(i * 3),
-                        b.x(), b.y() + 1, b.z(), 0, 0.2, 0);
-            }
+            for (int i = 0; i < 6; i++)
+                level.addParticle(new ShriekParticleOption(i * 3), b.x(), b.y() + 1, b.z(), 0, 0.2, 0);
         }
     }
 
-    // ── MAGMA CAGE ────────────────────────────────────────────────────────────
-    // Molten orange→yellow transition dust forming a pulsing ring cage.
+    // ── MAGMA CAGE ─────────────────────────────────────────────────────────────
     private static void tickMagmaCage(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
-        double pulse = 2.5 + Math.sin(frame * 0.25) * 1.0;  // radius pulses 1.5–3.5
-        int rings = 3;
-        int perRing = 8;
+        double pulse = 2.5 + Math.sin(frame * 0.25) * 1.0;
 
-        // molten orange #FF6A00 → hot yellow #FFD700
-        DustColorTransitionOptions magma = new DustColorTransitionOptions(
-                new Vector3f(1f, 0.42f, 0f),
-                new Vector3f(1f, 0.84f, 0f),
-                1.5f
-        );
-        // inner lava core: deep red #CC2200
-        DustParticleOptions lavaCore = new DustParticleOptions(
-                new Vector3f(0.8f, 0.13f, 0f), 1.0f);
+        // molten orange -> hot yellow
+        int magmaFrom = rgb(1f, 0.42f, 0f);
+        int magmaTo   = rgb(1f, 0.84f, 0f);
+        DustColorTransitionOptions magma = new DustColorTransitionOptions(magmaFrom, magmaTo, 1.5f);
+        DustParticleOptions lavaCore = new DustParticleOptions(rgb(0.8f, 0.13f, 0f), 1.0f);
 
-        for (int r = 0; r < rings; r++) {
+        for (int r = 0; r < 3; r++) {
             double height = b.y() + 0.5 + r * 0.9;
-            double ringRadius = pulse * (0.8 + r * 0.15);
-            for (int i = 0; i < perRing; i++) {
-                double angle = (i / (double) perRing) * Math.PI * 2 + (frame * 0.08) + (r * 0.5);
-                double px = b.x() + Math.cos(angle) * ringRadius;
-                double pz = b.z() + Math.sin(angle) * ringRadius;
+            double ringR  = pulse * (0.8 + r * 0.15);
+            for (int i = 0; i < 8; i++) {
+                double angle = (i / 8.0) * Math.PI * 2 + (frame * 0.08) + (r * 0.5);
+                double px = b.x() + Math.cos(angle) * ringR;
+                double pz = b.z() + Math.sin(angle) * ringR;
                 level.addParticle(magma, px, height, pz, 0, RNG.nextFloat() * 0.05f, 0);
                 if (RNG.nextInt(4) == 0)
                     level.addParticle(lavaCore, px, height + 0.2, pz, 0, 0.08, 0);
             }
         }
-        // drip sparks downward every 5 frames
         if (frame % 5 == 0) {
             for (int i = 0; i < 5; i++) {
                 double angle = RNG.nextDouble() * Math.PI * 2;
                 level.addParticle(lavaCore,
-                        b.x() + Math.cos(angle) * pulse,
-                        b.y() + 2.7,
-                        b.z() + Math.sin(angle) * pulse,
-                        0, -0.12, 0);
+                        b.x() + Math.cos(angle) * pulse, b.y() + 2.7,
+                        b.z() + Math.sin(angle) * pulse, 0, -0.12, 0);
             }
         }
     }
 
-    // ── DEATH MARK ────────────────────────────────────────────────────────────
-    // Toxic green → sickly yellow-green wisps that orbit the caster upward.
+    // ── DEATH MARK ─────────────────────────────────────────────────────────────
     private static void tickDeathMark(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
 
-        // poison green #00FF44 → bile yellow #AAFF00
-        DustColorTransitionOptions toxin = new DustColorTransitionOptions(
-                new Vector3f(0f, 1f, 0.27f),
-                new Vector3f(0.67f, 1f, 0f),
-                1.3f
-        );
-        // dark necrotic #003300
-        DustParticleOptions necro = new DustParticleOptions(
-                new Vector3f(0f, 0.2f, 0f), 1.1f);
+        // poison green -> bile yellow-green
+        int toxFrom = rgb(0f, 1f, 0.27f);
+        int toxTo   = rgb(0.67f, 1f, 0f);
+        DustColorTransitionOptions toxin = new DustColorTransitionOptions(toxFrom, toxTo, 1.3f);
+        DustParticleOptions necro = new DustParticleOptions(rgb(0f, 0.2f, 0f), 1.1f);
 
-        int spirals = 4;
-        for (int s = 0; s < spirals; s++) {
-            double baseAngle = (s / (double) spirals) * Math.PI * 2;
+        for (int s = 0; s < 4; s++) {
+            double baseAngle = (s / 4.0) * Math.PI * 2;
             double t = frame * 0.12;
             double radius = 1.5 + Math.sin(t + s) * 0.6;
-            double angle = baseAngle + t;
+            double angle  = baseAngle + t;
             double px = b.x() + Math.cos(angle) * radius;
-            double py = b.y() + 1 + ((50 - frame) / 50.0) * 3.0; // rises
+            double py = b.y() + 1 + ((50 - frame) / 50.0) * 3.0;
             double pz = b.z() + Math.sin(angle) * radius;
             level.addParticle(toxin, px, py, pz, 0, 0.04, 0);
             level.addParticle(necro, px + RNG.nextDouble() * 0.3, py + 0.4, pz + RNG.nextDouble() * 0.3, 0, 0.02, 0);
         }
-        // skull-ring pulse at activation (frame ~50) and mid-point (~25)
         if (frame == 50 || frame == 25) {
             for (int i = 0; i < 8; i++) {
                 double a = (i / 8.0) * Math.PI * 2;
                 level.addParticle(new ShriekParticleOption(i * 2),
-                        b.x() + Math.cos(a) * 2, b.y() + 1.2, b.z() + Math.sin(a) * 2,
-                        0, 0.1, 0);
+                        b.x() + Math.cos(a) * 2, b.y() + 1.2, b.z() + Math.sin(a) * 2, 0, 0.1, 0);
             }
         }
     }
 
-    // ── SHADOW STRIKE ─────────────────────────────────────────────────────────
-    // Silver → dark-blue streak from caster position through the target.
+    // ── SHADOW STRIKE ──────────────────────────────────────────────────────────
     private static void tickShadowStrike(Burst b, ClientLevel level) {
-        int frame = b.ticksLeft(); // 20 → 0
-        float progress = 1f - frame / 20f;
+        int frame = b.ticksLeft();
 
-        // silver #C0C0FF → midnight blue #000066
-        DustColorTransitionOptions blade = new DustColorTransitionOptions(
-                new Vector3f(0.75f, 0.75f, 1f),
-                new Vector3f(0f, 0f, 0.4f),
-                0.9f
-        );
-        // pure white flash
-        DustParticleOptions flash = new DustParticleOptions(
-                new Vector3f(1f, 1f, 1f), 1.4f);
+        // silver-blue -> midnight blue
+        int bladeFrom = rgb(0.75f, 0.75f, 1f);
+        int bladeTo   = rgb(0f, 0f, 0.4f);
+        DustColorTransitionOptions blade = new DustColorTransitionOptions(bladeFrom, bladeTo, 0.9f);
+        DustParticleOptions flash = new DustParticleOptions(rgb(1f, 1f, 1f), 1.4f);
 
         int count = frame > 10 ? 12 : 6;
         for (int i = 0; i < count; i++) {
-            double spread = (i / (double) count) * 2.5;
             double px = b.x() + (RNG.nextDouble() - 0.5) * 1.5;
-            double py = b.y() + 0.5 + spread * 0.4;
+            double py = b.y() + 0.5 + (i / (double) count) * 2.5 * 0.4;
             double pz = b.z() + (RNG.nextDouble() - 0.5) * 1.5;
             level.addParticle(blade, px, py, pz, 0, -0.05, 0);
             if (i % 3 == 0) level.addParticle(flash, px, py, pz, 0, 0, 0);
         }
-        // horizontal slash ring at peak
         if (frame == 15) {
             for (int i = 0; i < 16; i++) {
                 double a = (i / 16.0) * Math.PI * 2;
                 level.addParticle(flash,
-                        b.x() + Math.cos(a) * 0.8,
-                        b.y() + 1.0,
-                        b.z() + Math.sin(a) * 0.8,
+                        b.x() + Math.cos(a) * 0.8, b.y() + 1.0, b.z() + Math.sin(a) * 0.8,
                         Math.cos(a) * 0.3, 0, Math.sin(a) * 0.3);
             }
         }
     }
 
-    // ── STORM CHAIN ───────────────────────────────────────────────────────────
-    // Electric cyan → white arcs that zigzag between positions.
+    // ── STORM CHAIN ────────────────────────────────────────────────────────────
     private static void tickStormChain(Burst b, ClientLevel level) {
         int frame = b.ticksLeft();
 
-        // electric cyan #00FFFF → white #FFFFFF
-        DustColorTransitionOptions arc = new DustColorTransitionOptions(
-                new Vector3f(0f, 1f, 1f),
-                new Vector3f(1f, 1f, 1f),
-                1.0f
-        );
-        // core blue #0066FF
-        DustParticleOptions core = new DustParticleOptions(
-                new Vector3f(0f, 0.4f, 1f), 0.7f);
+        // electric cyan -> white
+        int arcFrom = rgb(0f, 1f, 1f);
+        int arcTo   = rgb(1f, 1f, 1f);
+        DustColorTransitionOptions arc = new DustColorTransitionOptions(arcFrom, arcTo, 1.0f);
+        DustParticleOptions core = new DustParticleOptions(rgb(0f, 0.4f, 1f), 0.7f);
 
-        // Zigzag bolt from centre outward in 4 directions (the 4 chain jumps)
         double[] angles = {0, Math.PI / 2, Math.PI, 3 * Math.PI / 2};
         for (double baseAngle : angles) {
-            int segments = 7;
             double reach = Math.min((35 - frame) / 35.0 * 5.0, 5.0);
-            for (int s = 0; s < segments; s++) {
-                double t = s / (double) segments;
+            for (int s = 0; s < 7; s++) {
+                double t = s / 7.0;
                 double jitter = (RNG.nextDouble() - 0.5) * 0.6;
                 double angle  = baseAngle + jitter * 0.4;
                 double px = b.x() + Math.cos(angle) * t * reach + (RNG.nextDouble() - 0.5) * 0.3;
@@ -267,15 +228,12 @@ public class AbilityParticleEngine {
                 if (s % 2 == 0) level.addParticle(core, px, py, pz, 0, 0.03, 0);
             }
         }
-        // central burst flash every 5 frames
         if (frame % 5 == 0) {
-            DustParticleOptions bolt = new DustParticleOptions(new Vector3f(0.8f, 0.95f, 1f), 1.5f);
+            DustParticleOptions bolt = new DustParticleOptions(rgb(0.8f, 0.95f, 1f), 1.5f);
             for (int i = 0; i < 6; i++) {
                 double a = (i / 6.0) * Math.PI * 2;
                 level.addParticle(bolt,
-                        b.x() + Math.cos(a) * 0.5,
-                        b.y() + 1.0,
-                        b.z() + Math.sin(a) * 0.5,
+                        b.x() + Math.cos(a) * 0.5, b.y() + 1.0, b.z() + Math.sin(a) * 0.5,
                         Math.cos(a) * 0.2, 0.05, Math.sin(a) * 0.2);
             }
         }

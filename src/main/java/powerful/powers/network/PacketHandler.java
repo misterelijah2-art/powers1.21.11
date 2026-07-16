@@ -1,56 +1,55 @@
 package powerful.powers.network;
 
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.handling.DirectionalPayloadHandler;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import powerful.powers.ability.AbilityLogicHandler;
 import powerful.powers.client.ClientPacketHandlers;
 
+/**
+ * Registers all packets via the PayloadRegistrar passed from powers.java.
+ * NeoForge 21.11: registrar uses .playToClient() / .playToServer() directly.
+ * No DirectionalPayloadHandler - handlers are plain IPayloadContext lambdas.
+ */
 public class PacketHandler {
 
-    public static void register(IEventBus bus) {
-        bus.addListener(PacketHandler::onRegisterPayloads);
-    }
+    public static void register(PayloadRegistrar reg) {
 
-    private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar reg = event.registrar("1");
-
-        // server → client
+        // server -> client
         reg.playToClient(
-                SyncAbilityPacket.TYPE, SyncAbilityPacket.CODEC,
-                new DirectionalPayloadHandler<>(
-                        ClientPacketHandlers::handleSyncAbility, (p, c) -> {}));
+                SyncAbilityPacket.TYPE,
+                SyncAbilityPacket.STREAM_CODEC,
+                (pkt, ctx) -> ClientPacketHandlers.handleSyncAbility(pkt, ctx));
 
         reg.playToClient(
-                TitleRevealPacket.TYPE, TitleRevealPacket.CODEC,
-                new DirectionalPayloadHandler<>(
-                        ClientPacketHandlers::handleTitleReveal, (p, c) -> {}));
+                TitleRevealPacket.TYPE,
+                TitleRevealPacket.STREAM_CODEC,
+                (pkt, ctx) -> ClientPacketHandlers.handleTitleReveal(pkt, ctx));
 
         reg.playToClient(
-                AbilityFxPacket.TYPE, AbilityFxPacket.CODEC,
-                new DirectionalPayloadHandler<>(
-                        ClientPacketHandlers::handleAbilityFx, (p, c) -> {}));
+                AbilityFxPacket.TYPE,
+                AbilityFxPacket.STREAM_CODEC,
+                (pkt, ctx) -> ClientPacketHandlers.handleAbilityFx(pkt, ctx));
 
-        // client → server
+        // client -> server
         reg.playToServer(
-                UseAbilityPacket.TYPE, UseAbilityPacket.CODEC,
-                new DirectionalPayloadHandler<>(
-                        (p, c) -> {},
-                        (p, c) -> c.player().ifPresent(player -> {
-                            if (player instanceof ServerPlayer sp) {
-                                powerful.powers.ability.AbilityLogicHandler.activateAbility(sp);
-                            }
-                        })));
+                UseAbilityPacket.TYPE,
+                UseAbilityPacket.STREAM_CODEC,
+                (pkt, ctx) -> ctx.enqueueWork(() -> {
+                    if (ctx.player() instanceof ServerPlayer sp) {
+                        AbilityLogicHandler.activateAbility(sp);
+                    }
+                }));
     }
 
-    public static void sendToPlayer(ServerPlayer player, net.minecraft.network.protocol.common.custom.CustomPacketPayload packet) {
+    public static void sendToPlayer(ServerPlayer player, CustomPacketPayload packet) {
         PacketDistributor.sendToPlayer(player, packet);
     }
 
-    public static void sendToNear(net.minecraft.server.level.ServerLevel level, double x, double y, double z, double range,
-                                   net.minecraft.network.protocol.common.custom.CustomPacketPayload packet) {
+    public static void sendToNear(ServerLevel level, double x, double y, double z,
+                                   double range, CustomPacketPayload packet) {
         PacketDistributor.sendToPlayersNear(level, null, x, y, z, range, packet);
     }
 }
