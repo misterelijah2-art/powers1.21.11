@@ -1,0 +1,13 @@
+{
+  "itemGroup.powers": "Example Mod Tab",
+  "block.powers.example_block": "Example Block",
+  "item.powers.example_item": "Example Item",
+
+  "powers.configuration.title": "powers Configs",
+  "powers.configuration.section.powers.common.toml": "powers Configs",
+  "powers.configuration.section.powers.common.toml.title": "powers Configs",
+  "powers.configuration.items": "Item List",
+  "powers.configuration.logDirtBlock": "Log Dirt Block",
+  "powers.configuration.magicNumberIntroduction": "Magic Number Text",
+  "powers.configuration.magicNumber": "Magic Number"
+}
