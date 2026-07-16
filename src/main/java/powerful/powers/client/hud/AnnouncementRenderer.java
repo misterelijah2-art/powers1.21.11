@@ -1,139 +1,112 @@
 package powerful.powers.client.hud;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
-import powerful.powers.client.ClientAbilityState;
-import powerful.powers.ability.AbilityType;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
+import powerful.powers.client.ClientTitleRevealState;
+import powerful.powers.powers;
 
 /**
- * Full-screen announcement renderer.
- *
- * Sequence (total 120 ticks = 6s):
- *   0-49  : dark overlay fades in + "??? " pulsing text (suspense pause)
- *   50-69 : flash + ability name bursts in with glow
- *   70-119: name shown, overlay fades out
- *
- * HUD is NOT drawn while showingAnnouncement is true.
+ * Renders the dramatic ability reveal sequence:
+ *  Phase 1 (0-50t):  "???" fades in with dark overlay
+ *  Phase 2 (50-70t): flash
+ *  Phase 3 (70-120t): ability name bursts in, scales down to normal
+ *  Phase 4 (120t+):   fades out
  */
+@EventBusSubscriber(modid = powers.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public class AnnouncementRenderer {
 
-    private static final int TOTAL   = ClientAbilityState.ANNOUNCE_DURATION;   // 120
-    private static final int PAUSE   = ClientAbilityState.PRE_REVEAL_PAUSE;    // 50
-    private static final int REVEAL  = 20;  // 20 ticks flash duration
+    @SubscribeEvent
+    public static void onRenderHud(RenderGuiLayerEvent.Post event) {
+        if (!ClientTitleRevealState.isRevealActive()) return;
 
-    public static void render(GuiGraphics gfx, float partialTick) {
-        if (!ClientAbilityState.showingAnnouncement) return;
-        AbilityType type = ClientAbilityState.type;
-        if (type == null) return;
+        Minecraft mc  = Minecraft.getInstance();
+        Font      font = mc.font;
+        GuiGraphics gfx = event.getGuiGraphics();
+        int sw = mc.getWindow().getGuiScaledWidth();
+        int sh = mc.getWindow().getGuiScaledHeight();
+        int cx = sw / 2;
+        int cy = sh / 2;
 
-        Minecraft mc = Minecraft.getInstance();
-        int W = mc.getWindow().getGuiScaledWidth();
-        int H = mc.getWindow().getGuiScaledHeight();
-        int cx = W / 2;
-        int cy = H / 2;
+        int tick = ClientTitleRevealState.tick();
+        ClientTitleRevealState.advance();
 
-        int timer = ClientAbilityState.announcementTimer; // counts DOWN from 120
-        int elapsed = TOTAL - timer; // 0..120
+        // ── Dark overlay ──────────────────────────────────────────────────
+        int overlayAlpha;
+        if (tick < 50)        overlayAlpha = (int)(180 * (tick / 50f));
+        else if (tick < 120)  overlayAlpha = 180;
+        else                   overlayAlpha = Math.max(0, 180 - (tick - 120) * 5);
+        if (overlayAlpha > 0)
+            gfx.fill(0, 0, sw, sh, (overlayAlpha << 24));
 
-        Font font = mc.font;
-
-        // --- Overlay darkness ---
-        float overlayAlpha;
-        if (elapsed < 10) {
-            overlayAlpha = elapsed / 10f * 0.75f;       // fade in
-        } else if (timer < 30) {
-            overlayAlpha = (timer / 30f) * 0.75f;       // fade out
-        } else {
-            overlayAlpha = 0.75f;
-        }
-        int overlayColor = (int)(overlayAlpha * 255) << 24;
-        gfx.fill(0, 0, W, H, overlayColor);
-
-        if (elapsed < PAUSE) {
-            // Suspense phase: show "???" pulsing
-            float pulse = (float)(0.6 + 0.4 * Math.sin(elapsed * 0.3));
-            int alpha = (int)(pulse * 200);
-            String suspense = "\u00a78??? ";
-            int sw = font.width(suspense);
+        // ── Phase 1: "???" ────────────────────────────────────────────────
+        if (tick < 50) {
+            int alpha = (int)(255 * (tick / 30f));
+            alpha = Math.min(255, alpha);
+            String unk = "???";
+            int tw = (int)(font.width(unk) * 2);
             gfx.pose().pushPose();
-            gfx.pose().translate(cx - sw * 0.9, cy - 6, 0);
-            gfx.pose().scale(1.8f, 1.8f, 1f);
-            gfx.drawString(font, suspense, 0, 0, (alpha << 24) | 0xFFFFFF, false);
+            gfx.pose().translate(cx - tw / 2f, cy - 6f, 0f);
+            gfx.pose().scale(2f, 2f, 1f);
+            gfx.drawString(font, unk, 0, 0, (alpha << 24) | 0x00AAAAAA, true);
             gfx.pose().popPose();
-
-            // Sub-text
-            String sub = "A power stirs within you...";
-            int subAlpha = (int)(overlayAlpha * 180);
-            gfx.drawCenteredString(font, Component.literal(sub)
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY),
-                    cx, cy + 24, (subAlpha << 24) | 0xAAAAAA);
-
-        } else {
-            // Reveal phase
-            int revealElapsed = elapsed - PAUSE; // 0..70
-
-            // Flash bang at moment of reveal
-            if (revealElapsed < REVEAL) {
-                float flashAlpha = Math.max(0f, 1f - revealElapsed / (float) REVEAL);
-                int flashColor = (int)(flashAlpha * 220) << 24 | 0xFFFFFF;
-                gfx.fill(0, 0, W, H, flashColor);
-            }
-
-            // Ability name
-            float nameScale;
-            if (revealElapsed < 8) {
-                nameScale = 1.0f + (8 - revealElapsed) * 0.3f; // burst in big
-            } else {
-                nameScale = 2.2f;
-            }
-            // Fade in name
-            float nameAlpha;
-            if (revealElapsed < 10) {
-                nameAlpha = revealElapsed / 10f;
-            } else if (timer < 20) {
-                nameAlpha = timer / 20f;
-            } else {
-                nameAlpha = 1.0f;
-            }
-            int nameAlphaInt = (int)(nameAlpha * 255);
-
-            String nameText = type.icon + " " + type.displayName;
-            int nw = font.width(nameText);
-
-            gfx.pose().pushPose();
-            float tx = cx - (nw * nameScale * 0.5f);
-            float ty = cy - 9 * nameScale * 0.5f;
-            gfx.pose().translate(tx, ty, 0);
-            gfx.pose().scale(nameScale, nameScale, 1f);
-
-            // Shadow glow: draw name multiple times slightly offset in ability color
-            int colorInt = net.minecraft.util.FastColor.ARGB32.color(
-                    nameAlphaInt / 2, 255, 255, 255);
-            for (int ox = -1; ox <= 1; ox++) {
-                for (int oy = -1; oy <= 1; oy++) {
-                    if (ox == 0 && oy == 0) continue;
-                    gfx.drawString(font, nameText, ox, oy, colorInt, false);
-                }
-            }
-            // Main name in ability color
-            gfx.drawString(font,
-                    Component.literal(nameText).withStyle(type.color),
-                    0, 0,
-                    net.minecraft.util.FastColor.ARGB32.color(nameAlphaInt, 255, 255, 255),
-                    true);
-            gfx.pose().popPose();
-
-            // Sub-label
-            float subAlpha = (float) Math.min(1.0, revealElapsed / 15.0);
-            if (timer < 20) subAlpha = timer / 20f;
-            gfx.drawCenteredString(font,
-                    Component.literal("Your ability has been bestowed")
-                            .withStyle(net.minecraft.ChatFormatting.GRAY),
-                    cx, cy + 28,
-                    net.minecraft.util.FastColor.ARGB32.color((int)(subAlpha * 200), 200, 200, 200));
+            return;
         }
+
+        // ── Phase 2: white flash ──────────────────────────────────────────
+        if (tick < 70) {
+            int flashAlpha = (int)(200 * (1f - (tick - 50) / 20f));
+            if (flashAlpha > 0)
+                gfx.fill(0, 0, sw, sh, (flashAlpha << 24) | 0x00FFFFFF);
+        }
+
+        // ── Phase 3 + 4: ability name ─────────────────────────────────────
+        if (ClientTitleRevealState.getAbility() == null) return;
+        String name       = ClientTitleRevealState.getAbility().displayName;
+        int    baseColor  = getColor(ClientTitleRevealState.getAbility());
+
+        int nameAlphaInt;
+        float nameScale;
+        if (tick < 70) {
+            nameAlphaInt = 255;
+            nameScale    = 2.5f - (tick - 50) * 0.05f;
+        } else if (tick < 120) {
+            nameAlphaInt = 255;
+            nameScale    = Math.max(1.8f, 2.5f - (tick - 50) * 0.05f);
+        } else {
+            int fade   = tick - 120;
+            nameAlphaInt = Math.max(0, 255 - fade * 5);
+            nameScale  = 1.8f;
+        }
+        if (nameAlphaInt <= 0) {
+            ClientTitleRevealState.clear();
+            return;
+        }
+
+        int tw = (int)(font.width(name) * nameScale);
+        int tx = cx - tw / 2;
+        int ty = cy - (int)(font.lineHeight * nameScale / 2f);
+
+        gfx.pose().pushPose();
+        gfx.pose().translate((float)tx, (float)ty, 0f);
+        gfx.pose().scale(nameScale, nameScale, 1f);
+        gfx.drawString(font, name, 0, 0, (nameAlphaInt << 24) | (baseColor & 0x00FFFFFF), true);
+        gfx.pose().popPose();
+
+        // Sub-text
+        String sub    = "You have been granted a power";
+        int    subA   = Math.max(0, nameAlphaInt - 80);
+        int    subW   = font.width(sub);
+        gfx.drawString(font, sub, cx - subW / 2, cy + 22,
+                (subA << 24) | 0x00C8C8C8, false);
+    }
+
+    private static int getColor(powerful.powers.ability.AbilityType type) {
+        Integer c = type.color.getColor();
+        return c != null ? c : 0xFFFFFF;
     }
 }

@@ -8,9 +8,9 @@ public enum AbilityType {
     VOIDSTEP(
         "Voidstep",
         ChatFormatting.DARK_PURPLE,
-        "\u00a75✴",
-        200,  // 10s cooldown
-        60    // 3s charge for full
+        "\u00a75\u2736",
+        200,
+        60
     ),
     SOULFLARE(
         "Soulflare",
@@ -29,7 +29,7 @@ public enum AbilityType {
     WRAITH_SHROUD(
         "Wraith Shroud",
         ChatFormatting.WHITE,
-        "\u00a7f\u2736",
+        "\u00a7f\u2606",
         240,
         70
     ),
@@ -44,17 +44,29 @@ public enum AbilityType {
     public final String displayName;
     public final ChatFormatting color;
     public final String icon;
-    public final int cooldownTicks;   // full cooldown in ticks
-    public final int chargeMaxTicks;  // ticks to hold for full charge
+    public final int cooldownTicks;
+    public final int chargeMaxTicks;
 
     AbilityType(String displayName, ChatFormatting color, String icon,
                 int cooldownTicks, int chargeMaxTicks) {
-        this.displayName = displayName;
-        this.color = color;
-        this.icon = icon;
+        this.displayName   = displayName;
+        this.color         = color;
+        this.icon          = icon;
         this.cooldownTicks = cooldownTicks;
         this.chargeMaxTicks = chargeMaxTicks;
     }
+
+    /** Helper so client/command code can call type.getDisplayName() safely. */
+    public String getDisplayName() { return displayName; }
+
+    /** Helper so client/command code can call type.getColor() safely. */
+    public ChatFormatting getColor() { return color; }
+
+    /** Helper alias for cooldownTicks. */
+    public int getCooldownTicks() { return cooldownTicks; }
+
+    /** Duration ticks – abilities stay visually "active" for 60t by default. */
+    public int getDurationTicks() { return 60; }
 
     public Component getDisplayComponent() {
         return Component.literal(displayName).withStyle(color);

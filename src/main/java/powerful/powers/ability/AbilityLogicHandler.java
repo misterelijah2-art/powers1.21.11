@@ -32,21 +32,20 @@ import java.util.*;
 @EventBusSubscriber(modid = powers.MODID)
 public class AbilityLogicHandler {
 
-    private static final Map<UUID, Integer>     joinTimers      = new HashMap<>();
-    private static final Set<UUID>              assigned        = new HashSet<>();
-    private static final Map<UUID, Set<UUID>>   deathMarked     = new HashMap<>();
-    private static final Map<UUID, Integer>     magmaCageTicks  = new HashMap<>();
-    private static final Map<UUID, Integer>     riftDetonation  = new HashMap<>();
-    private static final Map<UUID, List<UUID>>  riftTargets     = new HashMap<>();
-    private static final Map<UUID, Integer>     hudUnlockTimers = new HashMap<>();
+    private static final Map<UUID, Integer>    joinTimers      = new HashMap<>();
+    private static final Set<UUID>             assigned        = new HashSet<>();
+    private static final Map<UUID, Set<UUID>>  deathMarked     = new HashMap<>();
+    private static final Map<UUID, Integer>    magmaCageTicks  = new HashMap<>();
+    private static final Map<UUID, Integer>    riftDetonation  = new HashMap<>();
+    private static final Map<UUID, List<UUID>> riftTargets     = new HashMap<>();
+    private static final Map<UUID, Integer>    hudUnlockTimers = new HashMap<>();
     private static final int ASSIGN_DELAY_TICKS = 200;
 
-    // Particle colours per ability (ARGB packed)
-    private static final int COLOR_NULL_RIFT     = (0xFF << 24) | 0x6600CC;
-    private static final int COLOR_MAGMA_CAGE    = (0xFF << 24) | 0xFF6600;
-    private static final int COLOR_DEATH_MARK    = (0xFF << 24) | 0x44FF44;
-    private static final int COLOR_SHADOW_STRIKE = (0xFF << 24) | 0xCCCCCC;
-    private static final int COLOR_STORM_CHAIN   = (0xFF << 24) | 0x00FFFF;
+    private static final int COLOR_VOIDSTEP      = (0xFF << 24) | 0x6600CC;
+    private static final int COLOR_SOULFLARE     = (0xFF << 24) | 0xFF6600;
+    private static final int COLOR_GLACIAL_PULSE = (0xFF << 24) | 0x44FFFF;
+    private static final int COLOR_WRAITH_SHROUD = (0xFF << 24) | 0xCCCCCC;
+    private static final int COLOR_THUNDER_CRASH = (0xFF << 24) | 0xFFFF00;
 
     // ── JOIN / LOGOUT ────────────────────────────────────────────────────────
 
@@ -72,7 +71,6 @@ public class AbilityLogicHandler {
         UUID id = sp.getUUID();
         ServerLevel level = (ServerLevel) sp.level();
 
-        // Join assignment countdown
         if (joinTimers.containsKey(id)) {
             int t = joinTimers.get(id) + 1;
             joinTimers.put(id, t);
@@ -88,10 +86,8 @@ public class AbilityLogicHandler {
         if (data.isActive()) data.tickActive();
         if (data.isCharging()) data.tickCharge();
 
-        // HUD unlock countdown
         tickHudUnlock(sp);
 
-        // Magma Cage pulse
         if (magmaCageTicks.containsKey(id)) {
             int rem = magmaCageTicks.get(id) - 1;
             if (rem <= 0) {
@@ -103,7 +99,6 @@ public class AbilityLogicHandler {
             }
         }
 
-        // Null Rift detonation countdown
         if (riftDetonation.containsKey(id)) {
             int cd = riftDetonation.get(id) - 1;
             if (cd <= 0) {
@@ -115,7 +110,6 @@ public class AbilityLogicHandler {
             }
         }
 
-        // Ambient passive aura: only when ability is ready and hud is unlocked
         if (data.hasAbility() && !data.isOnCooldown() && data.isHudUnlocked()) {
             spawnAmbientAura(level, sp, data.getAbility());
         }
@@ -146,9 +140,7 @@ public class AbilityLogicHandler {
 
     // ── ACTIVATION ───────────────────────────────────────────────────────────
 
-    public static void activateAbility(ServerPlayer sp) {
-        activateAbility(sp, 40);
-    }
+    public static void activateAbility(ServerPlayer sp) { activateAbility(sp, 40); }
 
     public static void activateAbility(ServerPlayer sp, int chargeTicks) {
         PlayerAbilityData data = sp.getData(AbilityAttachment.ABILITY_DATA.get());
@@ -161,7 +153,7 @@ public class AbilityLogicHandler {
         ServerLevel level = (ServerLevel) sp.level();
         float charge = 0.5f + 0.5f * Math.min(1f, chargeTicks / 40f);
         triggerAbility(sp, type, level, charge);
-        data.setCooldownRemaining(type.getCooldownTicks());
+        data.setCooldownRemaining(type.cooldownTicks);
         data.setActiveRemaining(type.getDurationTicks());
         Vec3 pos = sp.position();
         PacketHandler.sendToNear(level, pos.x, pos.y, pos.z, 32,
@@ -176,80 +168,67 @@ public class AbilityLogicHandler {
         Vec3 pos = sp.position();
         switch (type) {
 
-            case NULL_RIFT -> {
-                double radius = 5.0 * charge;
-                List<LivingEntity> targets = getNearby(level, sp, radius);
-                List<UUID> ids = new ArrayList<>();
-                for (LivingEntity e : targets) {
-                    Vec3 pull = pos.add(0, 1, 0).subtract(e.position()).normalize().scale(2.5 * charge);
-                    e.setDeltaMovement(pull);
-                    e.hurtMarked = true;
-                    e.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 25, 0, false, false));
-                    ids.add(e.getUUID());
-                }
-                level.playSound(null, pos.x, pos.y, pos.z,
-                        SoundEvents.CONDUIT_ACTIVATE, SoundSource.PLAYERS, 1.2f, 0.5f);
-                sp.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 30, 0, false, false));
-                riftDetonation.put(sp.getUUID(), 20);
-                riftTargets.put(sp.getUUID(), ids);
+            case VOIDSTEP -> {
+                // Teleport 30 blocks in look direction + blindness to nearby
+                Vec3 look = sp.getLookAngle();
+                Vec3 dest = pos.add(look.normalize().scale(30.0 * charge));
+                sp.teleportTo(dest.x, dest.y, dest.z);
+                getNearby(level, sp, 4.0).forEach(e ->
+                    e.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 60, 0, false, false)));
+                level.playSound(null, dest.x, dest.y, dest.z,
+                        SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1.2f, 0.5f);
+                sp.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 40, 0, false, false));
             }
 
-            case MAGMA_CAGE -> {
+            case SOULFLARE -> {
+                // 3-fireball spread at nearby targets
+                List<LivingEntity> targets = getNearby(level, sp, 16.0 * charge);
+                int shots = Math.min(3, targets.isEmpty() ? 1 : targets.size());
+                Vec3 look = sp.getLookAngle();
+                for (int i = 0; i < shots; i++) {
+                    double spread = (i - shots / 2.0) * 0.15;
+                    Vec3 dir = targets.isEmpty()
+                            ? look.add(spread, 0, spread).normalize()
+                            : targets.get(i).position().subtract(pos).normalize().add(spread, 0, spread);
+                    LightningBolt bolt = new LightningBolt(EntityType.LIGHTNING_BOLT, level);
+                    Vec3 bPos = pos.add(dir.scale(6.0 + i * 3.0));
+                    bolt.setPos(bPos.x, bPos.y, bPos.z);
+                    bolt.setVisualOnly(false);
+                    level.addFreshEntity(bolt);
+                }
                 level.playSound(null, pos.x, pos.y, pos.z,
-                        SoundEvents.BLAZE_SHOOT, SoundSource.PLAYERS, 1.0f, 0.6f);
-                getNearby(level, sp, 4.0 * charge).forEach(e -> {
-                    e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, false, false));
-                    e.igniteForSeconds((int)(2 * charge));
+                        SoundEvents.BLAZE_SHOOT, SoundSource.PLAYERS, 1.0f, 0.7f);
+                sp.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 60, 0, false, false));
+            }
+
+            case GLACIAL_PULSE -> {
+                // Freeze wave: slowness IV in 12-block radius
+                getNearby(level, sp, 12.0 * charge).forEach(e -> {
+                    e.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 80, 3, false, false));
+                    e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 60, 1, false, false));
                 });
-                magmaCageTicks.put(sp.getUUID(), (int)(100 * charge));
-                sp.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 120, 0, false, false));
-            }
-
-            case DEATH_MARK -> {
-                Set<UUID> marked = new HashSet<>();
-                getNearby(level, sp, 6.0 * charge).forEach(e -> {
-                    e.addEffect(new MobEffectInstance(MobEffects.GLOWING, 120, 0, false, false));
-                    e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 120, 1, false, false));
-                    marked.add(e.getUUID());
-                });
-                deathMarked.put(sp.getUUID(), marked);
                 level.playSound(null, pos.x, pos.y, pos.z,
-                        SoundEvents.WITHER_SPAWN, SoundSource.PLAYERS, 0.6f, 1.6f);
-                sp.displayClientMessage(
-                        Component.literal("\u00a72" + marked.size() + " enemies marked!"), true);
+                        SoundEvents.POWDER_SNOW_FALL, SoundSource.PLAYERS, 1.2f, 0.4f);
+                sp.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 60, 1, false, false));
             }
 
-            case SHADOW_STRIKE -> {
-                Vec3 look  = sp.getLookAngle();
-                Vec3 start = sp.getEyePosition();
-                double range = 10.0 * charge;
-                LivingEntity hit = null;
-                double closest = Double.MAX_VALUE;
-                for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class,
-                        new AABB(start, start.add(look.scale(range))).inflate(1.5))) {
-                    if (e == sp) continue;
-                    double dist = e.distanceTo(sp);
-                    if (dist < closest) { closest = dist; hit = e; }
+            case WRAITH_SHROUD -> {
+                // 10s invis + speed + nausea on nearest enemy
+                sp.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 200, 0, false, false));
+                sp.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, 1, false, false));
+                List<LivingEntity> near = getNearby(level, sp, 10.0);
+                if (!near.isEmpty()) {
+                    near.stream()
+                        .min(Comparator.comparingDouble(e -> e.distanceTo(sp)))
+                        .ifPresent(t -> t.addEffect(
+                            new MobEffectInstance(MobEffects.CONFUSION, 120, 0, false, false)));
                 }
-                if (hit != null) {
-                    Vec3 behind = hit.position().subtract(look.normalize().scale(1.2));
-                    sp.teleportTo(behind.x, behind.y, behind.z);
-                    hit.hurt(level.damageSources().playerAttack(sp), 10.0f * charge);
-                    hit.addEffect(new MobEffectInstance(MobEffects.WITHER, 80, 1, false, false));
-                    spawnWitherCloud(level, hit.position());
-                    level.playSound(null, behind.x, behind.y, behind.z,
-                            SoundEvents.PHANTOM_BITE, SoundSource.PLAYERS, 1.0f, 1.3f);
-                } else {
-                    double blinkRange = 6.0 * charge;
-                    Vec3 dest = pos.add(look.normalize().scale(blinkRange));
-                    sp.teleportTo(dest.x, dest.y, dest.z);
-                    level.playSound(null, dest.x, dest.y, dest.z,
-                            SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 0.8f, 1.5f);
-                }
-                sp.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 20, 0, false, false));
+                level.playSound(null, pos.x, pos.y, pos.z,
+                        SoundEvents.WITCH_AMBIENT, SoundSource.PLAYERS, 0.8f, 0.6f);
             }
 
-            case STORM_CHAIN -> {
+            case THUNDER_CRASH -> {
+                // Knockback shockwave + lightning chain
                 List<LivingEntity> pool = getNearby(level, sp, 8.0 * charge);
                 pool.sort(Comparator.comparingDouble(e -> e.distanceTo(sp)));
                 int chains = Math.min((int)(2 + 2 * charge), pool.size());
@@ -260,14 +239,15 @@ public class AbilityLogicHandler {
                     bolt.setPos(target.getX(), target.getY(), target.getZ());
                     bolt.setVisualOnly(true);
                     level.addFreshEntity(bolt);
-                    target.hurt(level.damageSources().playerAttack(sp), 5.0f * charge);
-                    target.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, 1, false, false));
-                    target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 80, 0, false, false));
+                    Vec3 knockDir = target.position().subtract(pos).normalize();
+                    target.setDeltaMovement(knockDir.x * 2.5, 0.6, knockDir.z * 2.5);
+                    target.hurtMarked = true;
+                    target.hurt(level.damageSources().playerAttack(sp), 6.0f * charge);
                     if (last != null)
                         drawDustLine(level, last.position().add(0,1,0), target.position().add(0,1,0), 12);
                     last = target;
                 }
-                sp.addEffect(new MobEffectInstance(MobEffects.SPEED, 60, 1, false, false));
+                sp.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 60, 1, false, false));
                 level.playSound(null, pos.x, pos.y, pos.z,
                         SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.PLAYERS, 0.8f, 1.3f);
             }
@@ -284,38 +264,38 @@ public class AbilityLogicHandler {
         double ox = Math.cos(angle) * r;
         double oz = Math.sin(angle) * r;
         switch (type) {
-            case NULL_RIFT -> {
-                level.sendParticles(new DustParticleOptions(COLOR_NULL_RIFT, 0.5f),
+            case VOIDSTEP -> {
+                level.sendParticles(new DustParticleOptions(COLOR_VOIDSTEP, 0.5f),
                         pos.x + ox, pos.y, pos.z + oz, 1, 0.05, 0.1, 0.05, 0.0);
-                level.sendParticles(new DustParticleOptions(COLOR_NULL_RIFT, 0.5f),
+                level.sendParticles(new DustParticleOptions(COLOR_VOIDSTEP, 0.5f),
                         pos.x - ox, pos.y, pos.z - oz, 1, 0.05, 0.1, 0.05, 0.0);
             }
-            case MAGMA_CAGE -> {
-                level.sendParticles(new DustParticleOptions(COLOR_MAGMA_CAGE, 0.6f),
+            case SOULFLARE -> {
+                level.sendParticles(new DustParticleOptions(COLOR_SOULFLARE, 0.6f),
                         pos.x + ox * 0.5, pos.y, pos.z + oz * 0.5, 1, 0.1, 0.05, 0.1, 0.01);
             }
-            case DEATH_MARK -> {
-                level.sendParticles(new DustParticleOptions(COLOR_DEATH_MARK, 0.4f),
+            case GLACIAL_PULSE -> {
+                level.sendParticles(new DustParticleOptions(COLOR_GLACIAL_PULSE, 0.5f),
                         pos.x + ox, pos.y - 0.5, pos.z + oz, 1, 0.02, 0.02, 0.02, 0.0);
             }
-            case SHADOW_STRIKE -> {
-                level.sendParticles(new DustParticleOptions(COLOR_SHADOW_STRIKE, 0.4f),
+            case WRAITH_SHROUD -> {
+                level.sendParticles(new DustParticleOptions(COLOR_WRAITH_SHROUD, 0.4f),
                         pos.x + ox * 0.4, pos.y + 0.5, pos.z + oz * 0.4, 1, 0.02, 0.15, 0.02, 0.0);
             }
-            case STORM_CHAIN -> {
-                level.sendParticles(new DustParticleOptions(COLOR_STORM_CHAIN, 0.5f),
+            case THUNDER_CRASH -> {
+                level.sendParticles(new DustParticleOptions(COLOR_THUNDER_CRASH, 0.5f),
                         pos.x + ox, pos.y + 0.3, pos.z + oz, 1, 0.05, 0.05, 0.05, 0.02);
             }
         }
     }
 
-    // ── MAGMA CAGE pulse ─────────────────────────────────────────────────────
+    // ── MAGMA-STYLE cage pulse (soulflare after-burn) ─────────────────────────
 
     private static void pulseMagmaCage(ServerPlayer sp, ServerLevel level, float dmg, boolean finalBurst) {
         Vec3 pos = sp.position();
         getNearby(level, sp, 4.0).forEach(e -> {
             e.hurt(level.damageSources().playerAttack(sp), dmg);
-            e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, false, false));
+            e.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 2, false, false));
             if (!finalBurst) e.igniteForSeconds(1);
         });
         level.playSound(null, pos.x, pos.y, pos.z,
@@ -326,7 +306,7 @@ public class AbilityLogicHandler {
                     SoundEvents.GENERIC_EXPLODE.value(), SoundSource.PLAYERS, 0.7f, 1.4f);
     }
 
-    // ── NULL RIFT detonation ─────────────────────────────────────────────────
+    // ── NULL RIFT detonation (now used for Voidstep aftershock) ──────────────
 
     private static void detonateRift(ServerPlayer sp, ServerLevel level) {
         Vec3 pos = sp.position();
@@ -345,7 +325,7 @@ public class AbilityLogicHandler {
                 SoundEvents.CONDUIT_DEACTIVATE, SoundSource.PLAYERS, 1.2f, 0.7f);
     }
 
-    // ── DEATH MARK reflection ────────────────────────────────────────────────
+    // ── DEATH MARK reflection (still used internally for future expansion) ───
 
     @SubscribeEvent
     public static void onLivingDamage(LivingIncomingDamageEvent event) {
@@ -449,7 +429,7 @@ public class AbilityLogicHandler {
         PacketHandler.sendToPlayer(sp, new SyncAbilityPacket(
                 data.hasAbility() ? data.getAbility().name() : "",
                 data.getCooldownRemaining(),
-                data.hasAbility() ? data.getAbility().getCooldownTicks() : 0,
+                data.hasAbility() ? data.getAbility().cooldownTicks : 0,
                 data.isCharging(),
                 data.getChargeTicks(),
                 data.isHudUnlocked()));

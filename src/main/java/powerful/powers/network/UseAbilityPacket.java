@@ -5,15 +5,10 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-/**
- * Client -> Server: player pressed or released ability keybind.
- * pressed=true  -> start charging
- * pressed=false -> release / fire
- * chargeTicks   -> how many ticks the key was held (client counted)
- */
+/** Client -> Server: key pressed/released + how many ticks it was held. */
 public record UseAbilityPacket(
-        boolean pressed,
-        int chargeTicks
+        boolean release,
+        int     holdTicks
 ) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<UseAbilityPacket> TYPE =
@@ -21,13 +16,11 @@ public record UseAbilityPacket(
 
     public static final StreamCodec<FriendlyByteBuf, UseAbilityPacket> CODEC =
             StreamCodec.composite(
-                    net.minecraft.network.codec.ByteBufCodecs.BOOL, UseAbilityPacket::pressed,
-                    net.minecraft.network.codec.ByteBufCodecs.INT,  UseAbilityPacket::chargeTicks,
+                    net.minecraft.network.codec.ByteBufCodecs.BOOL, UseAbilityPacket::release,
+                    net.minecraft.network.codec.ByteBufCodecs.INT,  UseAbilityPacket::holdTicks,
                     UseAbilityPacket::new
             );
 
     @Override
-    public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
-        return TYPE;
-    }
+    public CustomPacketPayload.Type<? extends CustomPacketPayload> type() { return TYPE; }
 }
